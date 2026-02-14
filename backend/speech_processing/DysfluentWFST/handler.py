@@ -5,6 +5,7 @@ import json
 
 import torch
 import torchaudio
+import soundfile as sf
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from utils.decoder import WFSTdecoder
@@ -28,11 +29,13 @@ print("Ready.")
 
 def handler(job):
     job_input = job["input"]
-    audio_bytes = base64.b64decode(job_input["audio_base64"])
+    audio_b64 = job_input["audio_base64"]
+    audio_bytes = base64.b64decode(audio_b64 + "=" * (-len(audio_b64) % 4))
     ref_text = job_input["ref_text"]
 
-    # Load audio and resample to 16 kHz
-    waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
+    # Load audio and resample to 16 kHz (using soundfile directly, same as real.ipynb)
+    waveform, sample_rate = sf.read(io.BytesIO(audio_bytes))
+    waveform = torch.from_numpy(waveform).float()
     if sample_rate != 16000:
         waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)(waveform)
     waveform = waveform.squeeze()
