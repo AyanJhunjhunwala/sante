@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+openai
+python-dotenv
+python-multipart
+jinja2
