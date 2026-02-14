@@ -1,4 +1,4 @@
-import type { AnalysisResults } from "./types";
+import type { AnalysisResults, SummaryReport } from "./types";
 
 /** Fetch an ephemeral OpenAI Realtime token for the given segment. */
 export async function fetchEphemeralToken(segment: string): Promise<string> {
@@ -50,4 +50,41 @@ export async function analyzeStress(audioBlob: Blob): Promise<AnalysisResults> {
     stressed: raw.stressed ?? 0,
     notStressed: raw.not_stressed ?? 0,
   };
+}
+
+/** Fetch biomarker summary report for any completed session. */
+export async function fetchSessionSummary(payload: {
+  segment: string;
+  user_transcription: string;
+  ai_transcription: string;
+  duration_seconds: number;
+}): Promise<SummaryReport> {
+  const res = await fetch("/api/session-summary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error((err as { detail?: string }).detail || "Summary generation failed");
+  }
+
+  return (await res.json()) as SummaryReport;
+}
+
+/** Chat with the summary AI about a report. */
+export async function fetchSummaryChatReply(
+  report: SummaryReport,
+  message: string,
+): Promise<string> {
+  const res = await fetch("/api/session-summary/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report, message }),
+  });
+
+  if (!res.ok) return "Sorry, I couldn't process that.";
+  const data = (await res.json()) as { reply: string };
+  return data.reply || "No reply.";
 }

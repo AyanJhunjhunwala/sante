@@ -7,8 +7,10 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from agents.stress_detector import analyze_stress
+from agents.session_summary import generate_dummy_chat_reply, generate_dummy_session_report
 
 # ---------------------------------------------------------------------------
 # Config
@@ -181,6 +183,35 @@ async def get_ephemeral_token(segment: str):
 # ---------------------------------------------------------------------------
 # Voice analysis endpoints
 # ---------------------------------------------------------------------------
+
+
+class SessionSummaryRequest(BaseModel):
+    segment: str
+    user_transcription: str = ""
+    ai_transcription: str = ""
+    duration_seconds: float = 0.0
+
+
+class SessionSummaryChatRequest(BaseModel):
+    report: dict
+    message: str
+
+
+@app.post("/api/session-summary")
+async def api_session_summary(payload: SessionSummaryRequest):
+    report = generate_dummy_session_report(
+        segment=payload.segment,
+        user_transcription=payload.user_transcription,
+        ai_transcription=payload.ai_transcription,
+        duration_seconds=payload.duration_seconds,
+    )
+    return JSONResponse(report)
+
+
+@app.post("/api/session-summary/chat")
+async def api_session_summary_chat(payload: SessionSummaryChatRequest):
+    reply = generate_dummy_chat_reply(report=payload.report, message=payload.message)
+    return JSONResponse({"reply": reply})
 
 @app.post("/api/analyze/stress")
 async def api_analyze_stress(audio: UploadFile = File(...)):

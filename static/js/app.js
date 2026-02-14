@@ -66,6 +66,7 @@ let sessionTimerTimeoutId = null;
 let sessionTimerIntervalId = null;
 let sessionDeadline = 0;
 let isEndingSession = false;
+let activeSummaryReport = null;
 
 // Audio recording state (for stress analysis)
 let mediaRecorder = null;
@@ -673,6 +674,17 @@ async function endSession() {
   clearSessionTimer();
 
   const segment = currentSegment;
+  const endedAt = Date.now();
+  const userTranscription = conversationLog
+    .filter((turn) => turn.role === "user" && turn.text)
+    .map((turn) => turn.text)
+    .join(" ");
+  const aiTranscription = conversationLog
+    .filter((turn) => turn.role === "assistant" && turn.text)
+    .map((turn) => turn.text)
+    .join(" ");
+  const firstTurnAt = conversationLog.length > 0 ? conversationLog[0].createdAt : endedAt;
+  const durationSeconds = Math.max(0, (endedAt - firstTurnAt) / 1000);
 
   // Stop recording BEFORE cleanup (cleanup kills the original stream)
   let audioBlob = null;
@@ -685,13 +697,13 @@ async function endSession() {
   cleanup();
   state = "idle";
 
-  // If stress session with valid audio, show results overlay and analyze
-  if (segment === "stress" && audioBlob && audioBlob.size > 500) {
-    showResultsOverlay();
-    runStressAnalysis(audioBlob);
-  } else {
-    showLanding();
-  }
+  showResultsOverlay();
+  runSessionSummary({
+    segment,
+    user_transcription: userTranscription,
+    ai_transcription: aiTranscription,
+    duration_seconds: durationSeconds,
+  });
 
   isEndingSession = false;
 }
@@ -721,6 +733,7 @@ function showResultsOverlay() {
 
 function closeResults() {
   resultsOverlay.classList.remove("visible");
+  activeSummaryReport = null;
   showLanding();
 }
 
@@ -757,39 +770,147 @@ async function runStressAnalysis(audioBlob) {
   }
 }
 
-function showResults(data) {
+async function runSessionSummary(payload) {
+  const loadingSub = document.getElementById("results-loading-sub");
+
+  try {
+    if (loadingSub) loadingSub.textContent = "Building biomarker summary...";
+
+    const resp = await fetch("/api/session-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(errData.detail || "Summary generation failed");
+    }
+
+    const report = await resp.json();
+    activeSummaryReport = report;
+    showSummaryReport(report);
+  } catch (err) {
+    console.error("[Santé] Session summary error:", err);
+    showResultsError(err.message || "Summary failed. Please try again.");
+  }
+}
+
+function showSummaryReport(report) {
   resultsLoading.style.display = "none";
   resultsError.style.display = "none";
   resultsContent.style.display = "";
 
-  const isStressed = data.prediction === "STRESSED";
+  const accent = report.executive_summary?.accent_prediction || "Unknown";
+  const accentConf = (report.executive_summary?.accent_confidence || 0).toFixed(2);
+  const stressBinary = String(report.content?.stress_binary || "no").toUpperCase();
+  const userTx = report.content?.user_transcription || "";
+  const phonemes = (report.content?.phonemes || []).slice(0, 24).join(" ");
+  const metrics = Array.isArray(report.metrics) ? report.metrics : [];
+  const aiSummary = report.ai_summary || "No summary available.";
 
-  // Icon
-  resultsIcon.className = `results-icon ${isStressed ? "stressed" : "calm"}`;
-  resultsIcon.innerHTML = isStressed
-    ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
-    : '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+  const metricsRows = metrics.map((m) => {
+    const scorePct = Math.round((m.score || 0) * 100);
+    const confPct = Math.round((m.confidence || 0) * 100);
+    return `
+      <div class="summary-metric-row">
+        <span class="metric-name">${(m.name || "").replaceAll("_", " ")}</span>
+        <span class="metric-score">Score ${scorePct}</span>
+        <span class="metric-conf">Conf ${confPct}%</span>
+      </div>
+    `;
+  }).join("");
 
-  // Text
-  resultsPrediction.textContent = isStressed ? "Stressed" : "Not Stressed";
-  resultsPrediction.style.color = isStressed ? "var(--red)" : "var(--emerald)";
-  resultsConfidence.textContent = `${data.confidence.toFixed(1)}% confidence`;
+  resultsContent.innerHTML = `
+    <h2 class="summary-title">Session Summary</h2>
+    <p class="summary-accent">Accent: <strong>${accent}</strong> (${accentConf})</p>
 
-  // Bars (animate after a short delay)
-  const calmPct = (data.not_stressed || 0).toFixed(1);
-  const stressPct = (data.stressed || 0).toFixed(1);
+    <div class="summary-grid">
+      <div class="summary-block">
+        <h3>User Transcription</h3>
+        <p>${userTx || "No user transcription captured."}</p>
+      </div>
+      <div class="summary-block">
+        <h3>Phonemes (dummy)</h3>
+        <p class="summary-phonemes">${phonemes || "N/A"}</p>
+      </div>
+      <div class="summary-block">
+        <h3>Stress (binary)</h3>
+        <p>${stressBinary}</p>
+      </div>
+    </div>
 
-  barCalm.style.width = "0%";
-  barStress.style.width = "0%";
-  valCalm.textContent = `${calmPct}%`;
-  valStress.textContent = `${stressPct}%`;
+    <div class="summary-metrics">
+      <h3>Signals</h3>
+      ${metricsRows}
+    </div>
 
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      barCalm.style.width = `${calmPct}%`;
-      barStress.style.width = `${stressPct}%`;
-    }, 100);
-  });
+    <div class="summary-ai-note">
+      <h3>AI Summary</h3>
+      <p>${aiSummary}</p>
+    </div>
+
+    <div class="summary-chat" id="summary-chat">
+      <h3>Ask the summary AI</h3>
+      <div class="summary-chat-log" id="summary-chat-log">
+        <div class="summary-chat-msg ai">Ask about stress, accent, phonemes, or confidence.</div>
+      </div>
+      <div class="summary-chat-controls">
+        <input id="summary-chat-input" type="text" placeholder="Ask about this report..." />
+        <button id="summary-chat-send" class="results-close-btn" type="button">Send</button>
+      </div>
+    </div>
+
+    <button class="results-close-btn summary-done-btn" id="summary-done-btn" type="button">Back to Home</button>
+  `;
+
+  const doneBtn = document.getElementById("summary-done-btn");
+  const sendBtn = document.getElementById("summary-chat-send");
+  const input = document.getElementById("summary-chat-input");
+
+  if (doneBtn) doneBtn.addEventListener("click", closeResults);
+  if (sendBtn) sendBtn.addEventListener("click", onSummaryChatSend);
+  if (input) {
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") onSummaryChatSend();
+    });
+  }
+}
+
+async function onSummaryChatSend() {
+  const input = document.getElementById("summary-chat-input");
+  const log = document.getElementById("summary-chat-log");
+  if (!input || !log || !activeSummaryReport) return;
+
+  const message = input.value.trim();
+  if (!message) return;
+
+  const userMsg = document.createElement("div");
+  userMsg.className = "summary-chat-msg user";
+  userMsg.textContent = message;
+  log.appendChild(userMsg);
+  input.value = "";
+
+  try {
+    const resp = await fetch("/api/session-summary/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ report: activeSummaryReport, message }),
+    });
+
+    const data = await resp.json();
+    const aiMsg = document.createElement("div");
+    aiMsg.className = "summary-chat-msg ai";
+    aiMsg.textContent = data.reply || "No reply.";
+    log.appendChild(aiMsg);
+  } catch {
+    const aiMsg = document.createElement("div");
+    aiMsg.className = "summary-chat-msg ai";
+    aiMsg.textContent = "I couldn't answer that right now.";
+    log.appendChild(aiMsg);
+  }
+
+  log.scrollTop = log.scrollHeight;
 }
 
 function showResultsError(message) {

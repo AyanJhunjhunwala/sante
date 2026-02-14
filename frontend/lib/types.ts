@@ -31,6 +31,38 @@ export interface AnalysisResults {
   notStressed: number; // percentage
 }
 
+// Session summary report (from /api/session-summary)
+export interface SummaryMetric {
+  name: string;
+  score: number;
+  confidence: number;
+}
+
+export interface SummaryReport {
+  report_id: string;
+  created_at: string;
+  segment: string;
+  duration_seconds: number;
+  provenance: Record<string, unknown>;
+  executive_summary: {
+    accent_prediction: string;
+    accent_confidence: number;
+    top_flags: { label: string; score: number; confidence: number }[];
+  };
+  content: {
+    phonemes: string[];
+    user_transcription: string;
+    ai_transcription: string;
+    stress_binary: string;
+  };
+  speaker_traits: {
+    age_range_estimate: string;
+    gender_probabilities: { female: number; male: number };
+  };
+  metrics: SummaryMetric[];
+  ai_summary: string;
+}
+
 // WebSocket server → client message union
 export type WSServerMessage =
   | { type: "connected"; session_id: string; segment: string }

@@ -7,6 +7,7 @@ import type {
   Segment,
   SpeechMetrics,
   StressScore,
+  SummaryReport,
   Turn,
 } from "@/lib/types";
 
@@ -40,6 +41,7 @@ export interface SessionState {
 
   // Post-session results
   analysisResults: AnalysisResults | null;
+  summaryReport: SummaryReport | null;
   resultsStatus: "idle" | "loading" | "success" | "error";
   resultsError: string | null;
 }
@@ -81,6 +83,7 @@ export interface SessionActions {
   // Post-session results
   setResultsLoading: () => void;
   setResultsSuccess: (results: AnalysisResults) => void;
+  setSummaryReport: (report: SummaryReport) => void;
   setResultsError: (error: string) => void;
 }
 
@@ -103,6 +106,7 @@ const initialState: SessionState = {
   stressScore: null,
   speechMetrics: null,
   analysisResults: null,
+  summaryReport: null,
   resultsStatus: "idle",
   resultsError: null,
 };
@@ -231,6 +235,9 @@ export const useSessionStore = create<SessionState & SessionActions>()(
 
       setResultsSuccess: (results) =>
         set({ resultsStatus: "success", analysisResults: results }),
+
+      setSummaryReport: (report) =>
+        set({ resultsStatus: "success", summaryReport: report }),
 
       setResultsError: (error) =>
         set({ resultsStatus: "error", resultsError: error }),

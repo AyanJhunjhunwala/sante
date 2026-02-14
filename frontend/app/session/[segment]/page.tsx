@@ -7,7 +7,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
 import { useWaveform } from "@/hooks/useWaveform";
-import { analyzeStress } from "@/lib/api";
+import { analyzeStress, fetchSessionSummary } from "@/lib/api";
 import {
   VALID_SEGMENTS,
   SEGMENT_LABELS,
@@ -75,6 +75,20 @@ export default function SessionPage() {
     store.getState().endSession();
     waveform.stop();
 
+    // Snapshot conversation log before cleanup resets it
+    const conversationLog = store.getState().conversationLog;
+    const userTranscription = conversationLog
+      .filter((t) => t.role === "user" && t.text)
+      .map((t) => t.text)
+      .join(" ");
+    const aiTranscription = conversationLog
+      .filter((t) => t.role === "assistant" && t.text)
+      .map((t) => t.text)
+      .join(" ");
+    const firstTurnAt =
+      conversationLog.length > 0 ? conversationLog[0].createdAt : Date.now();
+    const durationSeconds = Math.max(0, (Date.now() - firstTurnAt) / 1000);
+
     // Stop recording, grab blob
     const audioBlob = await audioRecorder.stopRecording();
 
@@ -82,21 +96,22 @@ export default function SessionPage() {
     webRTC.cleanup();
     ws.disconnect();
 
-    // If stress segment and audio was captured → run analysis
-    if (segment === "stress" && audioBlob && audioBlob.size > 500) {
-      store.getState().setResultsLoading();
-      try {
-        const results = await analyzeStress(audioBlob);
-        store.getState().setResultsSuccess(results);
-      } catch (err) {
-        store
-          .getState()
-          .setResultsError(
-            err instanceof Error ? err.message : "Analysis failed",
-          );
-      }
-    } else {
-      router.push("/");
+    // Always generate biomarker summary for every segment
+    store.getState().setResultsLoading();
+    try {
+      const report = await fetchSessionSummary({
+        segment,
+        user_transcription: userTranscription,
+        ai_transcription: aiTranscription,
+        duration_seconds: durationSeconds,
+      });
+      store.getState().setSummaryReport(report);
+    } catch (err) {
+      store
+        .getState()
+        .setResultsError(
+          err instanceof Error ? err.message : "Summary failed",
+        );
     }
   }, [audioRecorder, segment, store, webRTC, waveform, ws, router]);
 
