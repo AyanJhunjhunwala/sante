@@ -39,13 +39,14 @@ RUN pip install --no-cache-dir \
     "transformers>=4.48.0" \
     cmudict \
     jiwer \
+    soundfile \
     runpod
 
-# Copy application source
-COPY . .
-
-# Bake Wav2Vec2 model into image (~1.2 GB) to avoid cold-start downloads
+# Bake Wav2Vec2 model BEFORE copying code so code changes don't re-trigger download
 ENV HF_HOME=/app/hf_cache
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('facebook/wav2vec2-xlsr-53-phon-cv-ft')"
+
+# Copy application source (changes here won't invalidate model cache above)
+COPY . .
 
 CMD ["python", "-u", "handler.py"]
