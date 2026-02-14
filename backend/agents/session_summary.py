@@ -109,10 +109,18 @@ def generate_dummy_session_report(
     user_transcription: str,
     ai_transcription: str,
     duration_seconds: float,
+    detected_phonemes: list[str] | None = None,
+    detected_dys_detect: list[str] | None = None,
 ) -> dict[str, Any]:
-    rng = _rng_from_text(segment, user_transcription, ai_transcription, str(round(duration_seconds, 1)))
+    rng = _rng_from_text(
+        segment, user_transcription, ai_transcription, str(round(duration_seconds, 1))
+    )
 
-    phonemes = _extract_phonemes(user_transcription, rng)
+    # Use real RunPod phonemes when available; fall back to dummy extraction
+    if detected_phonemes:
+        phonemes = detected_phonemes
+    else:
+        phonemes = _extract_phonemes(user_transcription, rng)
     accent = rng.choice(ACCENTS)
 
     metrics = [
@@ -172,6 +180,8 @@ def generate_dummy_session_report(
         },
         "content": {
             "phonemes": phonemes,
+            "dys_detect": detected_dys_detect or [],
+            "phonemes_source": "runpod" if detected_phonemes else "dummy",
             "user_transcription": user_transcription or "(no transcription captured)",
             "ai_transcription": ai_transcription or "(no assistant text captured)",
             "stress_binary": stress_binary,
@@ -214,7 +224,9 @@ def generate_dummy_chat_reply(*, report: dict[str, Any], message: str) -> str:
         return f"Detected phoneme sequence sample: {preview}."
 
     if "confidence" in msg:
-        top = sorted(report.get("metrics", []), key=lambda x: x["confidence"], reverse=True)[:2]
+        top = sorted(
+            report.get("metrics", []), key=lambda x: x["confidence"], reverse=True
+        )[:2]
         labels = ", ".join(f"{t['name']}={t['confidence']:.2f}" for t in top)
         return f"Highest-confidence metrics: {labels}."
 

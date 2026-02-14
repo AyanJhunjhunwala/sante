@@ -63,6 +63,8 @@ export interface SummaryReport {
   };
   content: {
     phonemes: string[];
+    dys_detect: string[];
+    phonemes_source: "runpod" | "dummy";
     user_transcription: string;
     ai_transcription: string;
     stress_binary: string;

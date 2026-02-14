@@ -58,12 +58,14 @@ async def analysis_ws(
                 frames = await analyze_chunk(chunk, chunk_count, segment)
                 for frame in frames:
                     if frame["type"] == "_phoneme_trigger":
-                        # Fire-and-forget phoneme analysis — never blocks the WS loop
+                        # Fire-and-forget phoneme analysis — never blocks the WS loop.
+                        # ref_text is optional: empty string → model falls back to
+                        # CTC greedy decode without WFST alignment.
                         audio = session_manager.get_phoneme_audio(session_id)
                         ref_text = session_manager.get_latest_user_transcript(
                             session_id
                         )
-                        if len(audio) >= 1000 and ref_text:
+                        if len(audio) >= 1000:
                             asyncio.create_task(
                                 _run_phoneme_analysis(
                                     session_id, websocket, audio, ref_text
@@ -130,12 +132,16 @@ async def _run_phoneme_analysis(
         if "error" in result:
             logger.warning(f"[WS] Phoneme error for {session_id}: {result['error']}")
             return
+        decode_phonemes = result.get("decode_phonemes", [])
+        dys_detect = result.get("dys_detect", [])
+        # Accumulate decoded phonemes into the session for the end-of-session report
+        session_manager.append_phonemes(session_id, decode_phonemes, dys_detect)
         await websocket.send_json(
             {
                 "type": "phonemes",
                 "ref_phonemes": result.get("ref_phonemes", []),
-                "decode_phonemes": result.get("decode_phonemes", []),
-                "dys_detect": result.get("dys_detect", []),
+                "decode_phonemes": decode_phonemes,
+                "dys_detect": dys_detect,
             }
         )
         logger.info(f"[WS] Phonemes sent for {session_id}")

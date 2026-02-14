@@ -32,6 +32,9 @@ class SessionState:
     transcript: list[TranscriptEntry] = field(default_factory=list)
     # Latest user transcript text — used as ref_text for the phoneme model
     latest_user_transcript: str = ""
+    # Accumulated decoded phonemes across all RunPod calls this session
+    accumulated_phonemes: list[str] = field(default_factory=list)
+    accumulated_dys_detect: list[str] = field(default_factory=list)
     chunk_count: int = 0
     created_at: float = field(default_factory=time.time)
 
@@ -84,6 +87,26 @@ class SessionManager:
             return ""
         return session.latest_user_transcript
 
+    def append_phonemes(
+        self, session_id: str, phonemes: list[str], dys_detect: list[str]
+    ) -> None:
+        """Accumulate decoded phonemes + disfluency labels for the end-of-session report."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return
+        session.accumulated_phonemes.extend(phonemes)
+        session.accumulated_dys_detect.extend(dys_detect)
+
+    def get_accumulated_phonemes(self, session_id: str) -> dict:
+        """Return all accumulated phonemes and dys_detect labels for this session."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return {"phonemes": [], "dys_detect": []}
+        return {
+            "phonemes": list(session.accumulated_phonemes),
+            "dys_detect": list(session.accumulated_dys_detect),
+        }
+
     def get_summary(self, session_id: str) -> dict:
         session = self._sessions.get(session_id)
         if session is None:
@@ -95,6 +118,9 @@ class SessionManager:
             "chunks_received": session.chunk_count,
             "transcript_turns": len(session.transcript),
             "duration_seconds": round(time.time() - session.created_at, 1),
+            # Real phonemes detected by RunPod during the session
+            "accumulated_phonemes": list(session.accumulated_phonemes),
+            "accumulated_dys_detect": list(session.accumulated_dys_detect),
         }
 
     def remove_session(self, session_id: str) -> None:

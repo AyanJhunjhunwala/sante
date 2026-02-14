@@ -9,10 +9,16 @@ export async function fetchEphemeralToken(segment: string): Promise<string> {
 
     if (text) {
       try {
-        const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown };
+        const parsed = JSON.parse(text) as {
+          detail?: unknown;
+          message?: unknown;
+        };
         if (typeof parsed.detail === "string" && parsed.detail.trim()) {
           detail = parsed.detail;
-        } else if (typeof parsed.message === "string" && parsed.message.trim()) {
+        } else if (
+          typeof parsed.message === "string" &&
+          parsed.message.trim()
+        ) {
           detail = parsed.message;
         }
       } catch {
@@ -58,6 +64,8 @@ export async function fetchSessionSummary(payload: {
   user_transcription: string;
   ai_transcription: string;
   duration_seconds: number;
+  detected_phonemes?: string[];
+  detected_dys_detect?: string[];
 }): Promise<SummaryReport> {
   const res = await fetch("/api/session-summary", {
     method: "POST",
@@ -67,7 +75,9 @@ export async function fetchSessionSummary(payload: {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error((err as { detail?: string }).detail || "Summary generation failed");
+    throw new Error(
+      (err as { detail?: string }).detail || "Summary generation failed",
+    );
   }
 
   return (await res.json()) as SummaryReport;

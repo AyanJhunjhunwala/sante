@@ -6,7 +6,10 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from agents.session_summary import generate_dummy_chat_reply, generate_dummy_session_report
+from agents.session_summary import (
+    generate_dummy_chat_reply,
+    generate_dummy_session_report,
+)
 
 router = APIRouter(prefix="/api/session-summary", tags=["summary"])
 
@@ -16,6 +19,8 @@ class SessionSummaryRequest(BaseModel):
     user_transcription: str = ""
     ai_transcription: str = ""
     duration_seconds: float = 0.0
+    detected_phonemes: list[str] = []
+    detected_dys_detect: list[str] = []
 
 
 class SessionSummaryChatRequest(BaseModel):
@@ -30,6 +35,8 @@ async def api_session_summary(payload: SessionSummaryRequest) -> JSONResponse:
         user_transcription=payload.user_transcription,
         ai_transcription=payload.ai_transcription,
         duration_seconds=payload.duration_seconds,
+        detected_phonemes=payload.detected_phonemes,
+        detected_dys_detect=payload.detected_dys_detect,
     )
     return JSONResponse(report)
 

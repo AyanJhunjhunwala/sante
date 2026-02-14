@@ -75,8 +75,9 @@ export default function SessionPage() {
     store.getState().endSession();
     waveform.stop();
 
-    // Snapshot conversation log before cleanup resets it
+    // Snapshot conversation log + phonemes before cleanup resets it
     const conversationLog = store.getState().conversationLog;
+    const phonemeFrame = store.getState().phonemeFrame;
     const userTranscription = conversationLog
       .filter((t) => t.role === "user" && t.text)
       .map((t) => t.text)
@@ -88,6 +89,10 @@ export default function SessionPage() {
     const firstTurnAt =
       conversationLog.length > 0 ? conversationLog[0].createdAt : Date.now();
     const durationSeconds = Math.max(0, (Date.now() - firstTurnAt) / 1000);
+    // Collect all phonemes detected during the session
+    const detectedPhonemes =
+      phonemeFrame?.decode_phonemes.map((t) => t.phoneme) ?? [];
+    const detectedDysDetect = phonemeFrame?.dys_detect ?? [];
 
     // Stop recording, grab blob
     const audioBlob = await audioRecorder.stopRecording();
@@ -104,14 +109,14 @@ export default function SessionPage() {
         user_transcription: userTranscription,
         ai_transcription: aiTranscription,
         duration_seconds: durationSeconds,
+        detected_phonemes: detectedPhonemes,
+        detected_dys_detect: detectedDysDetect,
       });
       store.getState().setSummaryReport(report);
     } catch (err) {
       store
         .getState()
-        .setResultsError(
-          err instanceof Error ? err.message : "Summary failed",
-        );
+        .setResultsError(err instanceof Error ? err.message : "Summary failed");
     }
   }, [audioRecorder, segment, store, webRTC, waveform, ws, router]);
 

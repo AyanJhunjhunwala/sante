@@ -16,7 +16,9 @@ export default function ResultsModal() {
   // Chat state
   const [chatMessages, setChatMessages] = useState<
     { role: "user" | "ai"; text: string }[]
-  >([{ role: "ai", text: "Ask about stress, accent, phonemes, or confidence." }]);
+  >([
+    { role: "ai", text: "Ask about stress, accent, phonemes, or confidence." },
+  ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatLogRef = useRef<HTMLDivElement>(null);
@@ -25,7 +27,10 @@ export default function ResultsModal() {
   useEffect(() => {
     if (resultsStatus === "idle") {
       setChatMessages([
-        { role: "ai", text: "Ask about stress, accent, phonemes, or confidence." },
+        {
+          role: "ai",
+          text: "Ask about stress, accent, phonemes, or confidence.",
+        },
       ]);
       setChatInput("");
     }
@@ -68,10 +73,24 @@ export default function ResultsModal() {
         {resultsStatus === "loading" && (
           <div style={centerCol}>
             <div style={spinnerStyle} />
-            <p style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", margin: "0 0 8px" }}>
+            <p
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "var(--text)",
+                margin: "0 0 8px",
+              }}
+            >
               Building biomarker summary&hellip;
             </p>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+            <p
+              style={{
+                fontSize: 13,
+                color: "var(--text-muted)",
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
               Generating dummy report &mdash; real models coming soon
             </p>
           </div>
@@ -94,7 +113,14 @@ export default function ResultsModal() {
         {/* Error */}
         {resultsStatus === "error" && (
           <div style={centerCol}>
-            <p style={{ fontSize: 15, color: "var(--red)", margin: 0, lineHeight: 1.6 }}>
+            <p
+              style={{
+                fontSize: 15,
+                color: "var(--red)",
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
               {resultsError || "Analysis failed. Please try again."}
             </p>
             <button onClick={handleBackToHome} style={btnStyle}>
@@ -131,37 +157,123 @@ function SummaryView({
   onClose: () => void;
 }) {
   const accent = report.executive_summary?.accent_prediction ?? "Unknown";
-  const accentConf = (report.executive_summary?.accent_confidence ?? 0).toFixed(2);
-  const stressBinary = String(report.content?.stress_binary ?? "no").toUpperCase();
+  const accentConf = (report.executive_summary?.accent_confidence ?? 0).toFixed(
+    2,
+  );
+  const stressBinary = String(
+    report.content?.stress_binary ?? "no",
+  ).toUpperCase();
   const userTx = report.content?.user_transcription ?? "";
-  const phonemes = (report.content?.phonemes ?? []).slice(0, 24).join(" ");
+  const phonemes = (report.content?.phonemes ?? []).slice(0, 48);
+  const dysDetect = report.content?.dys_detect ?? [];
+  const phonemesSource = report.content?.phonemes_source ?? "dummy";
   const metrics = Array.isArray(report.metrics) ? report.metrics : [];
   const aiSummary = report.ai_summary ?? "No summary available.";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
-      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--text)", textAlign: "center" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        textAlign: "left",
+      }}
+    >
+      <h2
+        style={{
+          margin: 0,
+          fontSize: 22,
+          fontWeight: 700,
+          color: "var(--text)",
+          textAlign: "center",
+        }}
+      >
         Session Summary
       </h2>
 
-      <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)", textAlign: "center" }}>
+      <p
+        style={{
+          margin: 0,
+          fontSize: 14,
+          color: "var(--text-muted)",
+          textAlign: "center",
+        }}
+      >
         Accent: <strong>{accent}</strong> ({accentConf})
       </p>
 
       {/* Grid blocks */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Block title="User Transcription">{userTx || "No user transcription captured."}</Block>
-        <Block title="Phonemes (dummy)">
-          <span style={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>
-            {phonemes || "N/A"}
-          </span>
+        <Block title="User Transcription">
+          {userTx || "No user transcription captured."}
+        </Block>
+        <Block
+          title={`Phonemes${phonemesSource === "runpod" ? "" : " (dummy)"}`}
+        >
+          {phonemes.length === 0 ? (
+            <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+              N/A
+            </span>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "3px",
+                marginTop: 2,
+              }}
+            >
+              {phonemes.map((ph, i) => {
+                const label = dysDetect[i] ?? "normal";
+                const chipColor =
+                  label === "repetition"
+                    ? "#d97706"
+                    : label === "prolongation"
+                      ? "#ea580c"
+                      : label !== "normal"
+                        ? "#dc2626"
+                        : "var(--text-secondary)";
+                const chipBg =
+                  label === "repetition"
+                    ? "rgba(217,119,6,0.1)"
+                    : label === "prolongation"
+                      ? "rgba(234,88,12,0.1)"
+                      : label !== "normal"
+                        ? "rgba(220,38,38,0.1)"
+                        : "transparent";
+                return (
+                  <span
+                    key={i}
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                      padding: "1px 5px",
+                      borderRadius: 5,
+                      fontWeight: 600,
+                      color: chipColor,
+                      background: chipBg,
+                      border: "1px solid var(--border-light, #e5e7eb)",
+                    }}
+                  >
+                    {ph}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </Block>
         <Block title="Stress (binary)">{stressBinary}</Block>
         <Block title="Duration">{report.duration_seconds.toFixed(1)}s</Block>
       </div>
 
       {/* Metrics table */}
-      <div style={{ background: "var(--bg-subtle, #f8f9fb)", borderRadius: 12, padding: "12px 16px" }}>
+      <div
+        style={{
+          background: "var(--bg-subtle, #f8f9fb)",
+          borderRadius: 12,
+          padding: "12px 16px",
+        }}
+      >
         <h3 style={h3Style}>Signals</h3>
         {metrics.map((m) => (
           <div key={m.name} style={metricRowStyle}>
@@ -171,7 +283,14 @@ function SummaryView({
             <span style={{ width: 70, textAlign: "right", fontWeight: 600 }}>
               {Math.round(m.score * 100)}
             </span>
-            <span style={{ width: 70, textAlign: "right", color: "var(--text-muted)", fontSize: 12 }}>
+            <span
+              style={{
+                width: 70,
+                textAlign: "right",
+                color: "var(--text-muted)",
+                fontSize: 12,
+              }}
+            >
               {Math.round(m.confidence * 100)}%
             </span>
           </div>
@@ -181,13 +300,26 @@ function SummaryView({
       {/* AI summary */}
       <div>
         <h3 style={h3Style}>AI Summary</h3>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 13,
+            color: "var(--text-secondary)",
+            lineHeight: 1.6,
+          }}
+        >
           {aiSummary}
         </p>
       </div>
 
       {/* Chat */}
-      <div style={{ background: "var(--bg-subtle, #f8f9fb)", borderRadius: 12, padding: "12px 16px" }}>
+      <div
+        style={{
+          background: "var(--bg-subtle, #f8f9fb)",
+          borderRadius: 12,
+          padding: "12px 16px",
+        }}
+      >
         <h3 style={h3Style}>Ask the summary AI</h3>
         <div
           ref={chatLogRef}
@@ -212,7 +344,8 @@ function SummaryView({
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                 background: m.role === "user" ? "var(--blue)" : "#fff",
                 color: m.role === "user" ? "#fff" : "var(--text)",
-                border: m.role === "ai" ? "1px solid var(--border, #e5e7eb)" : "none",
+                border:
+                  m.role === "ai" ? "1px solid var(--border, #e5e7eb)" : "none",
               }}
             >
               {m.text}
@@ -253,8 +386,17 @@ function SummaryView({
       </div>
 
       {/* Disclaimer + close */}
-      <p style={{ fontSize: 11, color: "var(--text-dim)", margin: 0, lineHeight: 1.6, textAlign: "center" }}>
-        This is a research tool, not a medical diagnosis. Consult a professional for clinical assessments.
+      <p
+        style={{
+          fontSize: 11,
+          color: "var(--text-dim)",
+          margin: 0,
+          lineHeight: 1.6,
+          textAlign: "center",
+        }}
+      >
+        This is a research tool, not a medical diagnosis. Consult a professional
+        for clinical assessments.
       </p>
       <div style={{ textAlign: "center" }}>
         <button onClick={onClose} style={btnStyle}>
@@ -269,7 +411,13 @@ function SummaryView({
 /* Small helpers                                                             */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -290,7 +438,9 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
       >
         {title}
       </h4>
-      <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{children}</div>
+      <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+        {children}
+      </div>
     </div>
   );
 }
