@@ -1,0 +1,9 @@
+data/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.ipynb
+*.ipynb_checkpoints/
+resources/
+hf_cache/

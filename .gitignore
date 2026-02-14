@@ -30,3 +30,6 @@ Thumbs.db
 # Uploads / temp
 uploads/
 tmp/
+
+# Large wheel files
+*.whl
