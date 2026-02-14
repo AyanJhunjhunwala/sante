@@ -4,8 +4,8 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -37,17 +37,6 @@ Important guidelines:
   health today.
 """.strip()
 
-SESSION_CONFIG = json.dumps({
-    "type": "realtime",
-    "model": "gpt-realtime",
-    "instructions": SYSTEM_INSTRUCTIONS,
-    "audio": {
-        "output": {
-            "voice": "sage",
-        },
-    },
-})
-
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -66,11 +55,11 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/session", response_class=PlainTextResponse)
-async def create_session(request: Request):
+@app.get("/token")
+async def get_ephemeral_token():
     """
-    Receive the browser's SDP offer, forward it alongside session config
-    to the OpenAI Realtime API, and return the SDP answer.
+    Mint a short-lived ephemeral key from the OpenAI REST API.
+    The browser uses this key to connect directly to OpenAI via WebRTC.
     """
     if not OPENAI_API_KEY or OPENAI_API_KEY == "your_openai_api_key_here":
         raise HTTPException(
@@ -78,32 +67,36 @@ async def create_session(request: Request):
             detail="OpenAI API key not configured. Set OPENAI_API_KEY in .env",
         )
 
-    # Read the raw SDP offer from the browser
-    sdp_offer = (await request.body()).decode("utf-8")
-
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
-            "https://api.openai.com/v1/realtime/calls",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            files=[("sdp", (None, sdp_offer)), ("session", (None, SESSION_CONFIG))],
+            "https://api.openai.com/v1/realtime/client_secrets",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "session": {
+                    "type": "realtime",
+                    "model": "gpt-realtime",
+                    "instructions": SYSTEM_INSTRUCTIONS,
+                    "audio": {
+                        "output": {
+                            "voice": "sage",
+                        },
+                    },
+                },
+            },
         )
 
     if resp.status_code != 200:
-        print(f"OpenAI error {resp.status_code}: {resp.text}")
+        print(f"OpenAI token error {resp.status_code}: {resp.text}")
         raise HTTPException(
             status_code=resp.status_code,
             detail=f"OpenAI error: {resp.text}",
         )
 
-    sdp_answer = resp.text
-    if not sdp_answer or not sdp_answer.startswith("v="):
-        print(f"Unexpected SDP response: {sdp_answer[:200]}")
-        raise HTTPException(
-            status_code=502,
-            detail="Invalid SDP answer from OpenAI",
-        )
-
-    return PlainTextResponse(content=sdp_answer, media_type="application/sdp")
+    data = resp.json()
+    return JSONResponse(data)
 
 
 # ---------------------------------------------------------------------------

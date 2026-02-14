@@ -1,6 +1,6 @@
 // ============================================
 // Santé — Voice AI Health Platform
-// WebRTC Realtime API connection
+// WebRTC Realtime API connection (ephemeral token)
 // ============================================
 
 const santeBtn = document.getElementById("sante-btn");
@@ -18,6 +18,7 @@ let state = "idle"; // idle | connecting | active
 let pc = null;      // RTCPeerConnection
 let dc = null;      // DataChannel
 let audioEl = null;
+let localStream = null;
 
 // Transcript accumulators
 let aiTranscriptBuffer = "";
@@ -87,14 +88,27 @@ function clearTranscript() {
 }
 
 // ---------------------------------------------------------------------------
-// WebRTC connection
+// WebRTC connection (ephemeral token flow)
 // ---------------------------------------------------------------------------
 async function connect() {
   setState("connecting");
   clearTranscript();
 
   try {
-    // Create peer connection
+    // 1. Get ephemeral token from our backend
+    const tokenResp = await fetch("/token");
+    if (!tokenResp.ok) {
+      const err = await tokenResp.text();
+      throw new Error(err || "Failed to get session token");
+    }
+    const tokenData = await tokenResp.json();
+    const ephemeralKey = tokenData.value;
+
+    if (!ephemeralKey) {
+      throw new Error("No ephemeral key returned from server");
+    }
+
+    // 2. Create peer connection
     pc = new RTCPeerConnection();
 
     // Set up remote audio playback
@@ -105,33 +119,35 @@ async function connect() {
     };
 
     // Add local microphone track
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    pc.addTrack(stream.getTracks()[0]);
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    pc.addTrack(localStream.getTracks()[0]);
 
     // Set up data channel for events
     dc = pc.createDataChannel("oai-events");
     dc.addEventListener("open", onDataChannelOpen);
     dc.addEventListener("message", onDataChannelMessage);
 
-    // Create SDP offer
+    // 3. Create SDP offer and send directly to OpenAI
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Send to our backend, which forwards to OpenAI
-    const resp = await fetch("/session", {
+    const sdpResp = await fetch("https://api.openai.com/v1/realtime/calls", {
       method: "POST",
       body: offer.sdp,
-      headers: { "Content-Type": "application/sdp" },
+      headers: {
+        Authorization: `Bearer ${ephemeralKey}`,
+        "Content-Type": "application/sdp",
+      },
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(errText || "Failed to create session");
+    if (!sdpResp.ok) {
+      const errText = await sdpResp.text();
+      throw new Error(`OpenAI SDP error: ${errText}`);
     }
 
-    // Set remote SDP answer
-    const sdp = await resp.text();
-    await pc.setRemoteDescription({ type: "answer", sdp });
+    // 4. Set remote SDP answer
+    const sdpAnswer = await sdpResp.text();
+    await pc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
 
     setState("active");
   } catch (err) {
@@ -145,7 +161,7 @@ async function connect() {
 function onDataChannelOpen() {
   console.log("Data channel open");
 
-  // Enable input audio transcription (not supported in initial session config)
+  // Enable input audio transcription
   dc.send(JSON.stringify({
     type: "session.update",
     session: {
@@ -206,7 +222,6 @@ function handleRealtimeEvent(event) {
       break;
 
     default:
-      // Log other events at debug level
       break;
   }
 }
@@ -225,11 +240,12 @@ function cleanup() {
     dc = null;
   }
   if (pc) {
-    pc.getSenders().forEach((sender) => {
-      if (sender.track) sender.track.stop();
-    });
     pc.close();
     pc = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
   }
   if (audioEl) {
     audioEl.srcObject = null;
