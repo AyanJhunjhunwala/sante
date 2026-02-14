@@ -7,7 +7,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
 import { useWaveform } from "@/hooks/useWaveform";
-import { analyzeStress, fetchSessionSummary } from "@/lib/api";
+import { analyzePhonemes, fetchSessionSummary } from "@/lib/api";
 import {
   VALID_SEGMENTS,
   SEGMENT_LABELS,
@@ -75,9 +75,8 @@ export default function SessionPage() {
     store.getState().endSession();
     waveform.stop();
 
-    // Snapshot conversation log + phonemes before cleanup resets it
+    // Snapshot conversation log before cleanup resets it
     const conversationLog = store.getState().conversationLog;
-    const phonemeFrame = store.getState().phonemeFrame;
     const userTranscription = conversationLog
       .filter((t) => t.role === "user" && t.text)
       .map((t) => t.text)
@@ -89,21 +88,30 @@ export default function SessionPage() {
     const firstTurnAt =
       conversationLog.length > 0 ? conversationLog[0].createdAt : Date.now();
     const durationSeconds = Math.max(0, (Date.now() - firstTurnAt) / 1000);
-    // Collect all phonemes detected during the session
-    const detectedPhonemes =
-      phonemeFrame?.decode_phonemes.map((t) => t.phoneme) ?? [];
-    const detectedDysDetect = phonemeFrame?.dys_detect ?? [];
 
-    // Stop recording, grab blob
+    // Stop recording, grab full audio blob
     const audioBlob = await audioRecorder.stopRecording();
 
     // Cleanup WebRTC + WS
     webRTC.cleanup();
     ws.disconnect();
 
-    // Always generate biomarker summary for every segment
+    // Show loading screen while we analyze
     store.getState().setResultsLoading();
     try {
+      // Run phoneme analysis on the full audio, then build the report
+      let detectedPhonemes: string[] = [];
+      let detectedDysDetect: string[] = [];
+
+      if (audioBlob && audioBlob.size > 1000) {
+        const phonemeResult = await analyzePhonemes(
+          audioBlob,
+          userTranscription,
+        );
+        detectedPhonemes = phonemeResult.decode_phonemes;
+        detectedDysDetect = phonemeResult.dys_detect;
+      }
+
       const report = await fetchSessionSummary({
         segment,
         user_transcription: userTranscription,
@@ -116,7 +124,9 @@ export default function SessionPage() {
     } catch (err) {
       store
         .getState()
-        .setResultsError(err instanceof Error ? err.message : "Summary failed");
+        .setResultsError(
+          err instanceof Error ? err.message : "Analysis failed",
+        );
     }
   }, [audioRecorder, segment, store, webRTC, waveform, ws, router]);
 
@@ -143,12 +153,10 @@ export default function SessionPage() {
       // Start waveform visualizer
       waveform.start(stream);
 
-      // Start recording for stress segment
-      if (validSegment === "stress") {
-        audioRecorder.startRecording(stream, (chunk) => {
-          ws.sendChunk(chunk);
-        });
-      }
+      // Record audio for all segments — full blob used for post-session phoneme analysis
+      audioRecorder.startRecording(stream, (chunk) => {
+        ws.sendChunk(chunk);
+      });
 
       // Connect analysis WS
       const id = store.getState().sessionId;

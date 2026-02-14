@@ -1,17 +1,5 @@
 export type Segment = "speech" | "health" | "stress";
 
-export interface PhonemeToken {
-  phoneme: string; // IPA symbol e.g. "æ"
-  dys_label: string; // "normal" | "repetition" | "prolongation" | ...
-}
-
-export interface PhonemeFrame {
-  ref_phonemes: string[];
-  decode_phonemes: PhonemeToken[];
-  dys_detect: string[];
-  updatedAt: number;
-}
-
 export type TurnRole = "user" | "assistant";
 
 export interface Turn {
@@ -92,12 +80,6 @@ export type WSServerMessage =
       disfluency: number;
       pacing: number;
       wpm: number | null;
-    }
-  | {
-      type: "phonemes";
-      ref_phonemes: string[];
-      decode_phonemes: string[];
-      dys_detect: string[];
     }
   | { type: "transcript_ack" }
   | { type: "session_complete"; summary: Record<string, unknown> }

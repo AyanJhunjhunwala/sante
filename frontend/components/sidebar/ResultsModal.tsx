@@ -81,7 +81,7 @@ export default function ResultsModal() {
                 margin: "0 0 8px",
               }}
             >
-              Building biomarker summary&hellip;
+              Analyzing your voice recording&hellip;
             </p>
             <p
               style={{
@@ -91,7 +91,7 @@ export default function ResultsModal() {
                 lineHeight: 1.6,
               }}
             >
-              Generating dummy report &mdash; real models coming soon
+              Detecting phonemes and building your biomarker summary
             </p>
           </div>
         )}

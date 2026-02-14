@@ -8,13 +8,11 @@ Protocol:
   Server → Client text:    JSON frames (waveform, stress_score, speech_metrics, ...)
 """
 
-import asyncio
 import json
 import logging
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from agents.phoneme_detector import analyze_phonemes
 from services.audio_analyzer import analyze_chunk
 from services.session_manager import session_manager
 
@@ -57,22 +55,7 @@ async def analysis_ws(
 
                 frames = await analyze_chunk(chunk, chunk_count, segment)
                 for frame in frames:
-                    if frame["type"] == "_phoneme_trigger":
-                        # Fire-and-forget phoneme analysis — never blocks the WS loop.
-                        # ref_text is optional: empty string → model falls back to
-                        # CTC greedy decode without WFST alignment.
-                        audio = session_manager.get_phoneme_audio(session_id)
-                        ref_text = session_manager.get_latest_user_transcript(
-                            session_id
-                        )
-                        if len(audio) >= 1000:
-                            asyncio.create_task(
-                                _run_phoneme_analysis(
-                                    session_id, websocket, audio, ref_text
-                                )
-                            )
-                    else:
-                        await websocket.send_json(frame)
+                    await websocket.send_json(frame)
 
             # ── Text: JSON control messages ──
             elif message.get("text"):
@@ -111,39 +94,3 @@ async def analysis_ws(
     finally:
         session_manager.remove_session(session_id)
         logger.info(f"[WS] Session {session_id} cleaned up")
-
-
-async def _run_phoneme_analysis(
-    session_id: str,
-    websocket: WebSocket,
-    audio: bytes,
-    ref_text: str,
-) -> None:
-    """
-    Background task: call RunPod phoneme model and push result to client.
-    Errors are logged silently — never crashes the session.
-    """
-    logger.info(
-        f"[WS] Phoneme analysis triggered for {session_id} "
-        f"({len(audio)} bytes, ref={repr(ref_text[:60])})"
-    )
-    try:
-        result = await analyze_phonemes(audio, ref_text)
-        if "error" in result:
-            logger.warning(f"[WS] Phoneme error for {session_id}: {result['error']}")
-            return
-        decode_phonemes = result.get("decode_phonemes", [])
-        dys_detect = result.get("dys_detect", [])
-        # Accumulate decoded phonemes into the session for the end-of-session report
-        session_manager.append_phonemes(session_id, decode_phonemes, dys_detect)
-        await websocket.send_json(
-            {
-                "type": "phonemes",
-                "ref_phonemes": result.get("ref_phonemes", []),
-                "decode_phonemes": decode_phonemes,
-                "dys_detect": dys_detect,
-            }
-        )
-        logger.info(f"[WS] Phonemes sent for {session_id}")
-    except Exception as exc:
-        logger.warning(f"[WS] Phoneme analysis failed for {session_id}: {exc}")

@@ -6,7 +6,6 @@ import { SEGMENT_LABELS } from "@/lib/constants";
 import WaveformPanel from "./WaveformPanel";
 import StressScorePanel from "./StressScorePanel";
 import SpeechMetricsPanel from "./SpeechMetricsPanel";
-import PhonemePanel from "./PhonemePanel";
 import LiveTranscriptPanel from "./LiveTranscriptPanel";
 
 interface AnalysisSidebarProps {
@@ -70,7 +69,6 @@ export default function AnalysisSidebar({ canvasRef }: AnalysisSidebarProps) {
       <WaveformPanel canvasRef={canvasRef} />
       <StressScorePanel />
       <SpeechMetricsPanel />
-      <PhonemePanel />
       <LiveTranscriptPanel />
     </div>
   );

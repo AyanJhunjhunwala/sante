@@ -34,6 +34,32 @@ export async function fetchEphemeralToken(segment: string): Promise<string> {
   return key;
 }
 
+/** Upload full session audio to the phoneme analysis endpoint. */
+export async function analyzePhonemes(
+  audioBlob: Blob,
+  refText: string = "",
+): Promise<{
+  ref_phonemes: string[];
+  decode_phonemes: string[];
+  dys_detect: string[];
+}> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "recording.webm");
+  if (refText) form.append("ref_text", refText);
+
+  const res = await fetch("/api/analyze/phonemes", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(
+      (err as { detail?: string }).detail || "Phoneme analysis failed",
+    );
+  }
+  return res.json();
+}
+
 /** Upload audio blob to the stress analysis endpoint. */
 export async function analyzeStress(audioBlob: Blob): Promise<AnalysisResults> {
   const form = new FormData();
