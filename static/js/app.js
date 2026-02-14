@@ -127,13 +127,16 @@ function newTurn(role, text, status = "final") {
 
 function renderConversationLog() {
   transcriptScroll.innerHTML = "";
+  let rendered = 0;
 
   conversationLog.forEach((turn) => {
     if (!turn.text) return;
     addTranscriptEntry(turn.role === "user" ? "You" : "Santé", turn.text);
+    rendered++;
   });
 
   transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
+  console.log("[Santé] Rendered", rendered, "turns, children:", transcriptScroll.children.length, "area visible:", transcriptArea.classList.contains("visible"));
 }
 
 function resetConversationLog() {
@@ -206,13 +209,7 @@ async function startSession(segment) {
 }
 
 function onDCOpen() {
-  console.log("Data channel open");
-  dc.send(JSON.stringify({
-    type: "session.update",
-    session: {
-      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-    },
-  }));
+  console.log("[Santé] Data channel open");
 }
 
 function onDCMessage(e) {
@@ -242,13 +239,18 @@ function extractUserTranscript(ev) {
 
 function appendUserTurn(text) {
   const userText = (text || "").trim();
+  console.log("[Santé] appendUserTurn called, text:", JSON.stringify(userText), "log length:", conversationLog.length);
   if (!userText) return;
 
   // Dedup: skip if last user turn has identical text
   const lastTurn = conversationLog[conversationLog.length - 1];
-  if (lastTurn && lastTurn.role === "user" && lastTurn.status === "final" && lastTurn.text === userText) return;
+  if (lastTurn && lastTurn.role === "user" && lastTurn.status === "final" && lastTurn.text === userText) {
+    console.log("[Santé] Skipped duplicate user turn");
+    return;
+  }
 
   conversationLog.push(newTurn("user", userText, "final"));
+  console.log("[Santé] User turn added. Full log:", conversationLog.map(t => `${t.role}:${t.text.slice(0,30)}`));
   renderConversationLog();
 }
 
@@ -293,6 +295,23 @@ function handleEvent(ev) {
       console.warn("[Santé] User transcription FAILED:", ev.error || ev);
       break;
 
+    // ── Fallback: extract user text from conversation.item.done ──
+    case "conversation.item.done":
+      {
+        const item = ev.item;
+        if (item && item.role === "user" && Array.isArray(item.content)) {
+          for (const part of item.content) {
+            const t = part.transcript || part.text || "";
+            if (t.trim()) {
+              console.log("[Santé] User text from item.done:", t);
+              appendUserTurn(t);
+              break;
+            }
+          }
+        }
+      }
+      break;
+
     // ── Session lifecycle ──
     case "session.created":
       console.log("[Santé] Session created:", ev.session?.id);
@@ -307,16 +326,6 @@ function handleEvent(ev) {
       break;
 
     default:
-      // Log ALL unhandled event types so nothing is invisible
-      if (!ev.type?.startsWith("response.audio.")
-          && !ev.type?.startsWith("input_audio_buffer.")
-          && ev.type !== "response.created"
-          && ev.type !== "response.done"
-          && ev.type !== "response.output_item.added"
-          && ev.type !== "response.output_item.done"
-          && ev.type !== "conversation.item.created") {
-        console.log("[Santé] Unhandled event:", ev.type, ev);
-      }
       break;
   }
 }

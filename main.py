@@ -163,6 +163,22 @@ async def get_ephemeral_token(segment: str):
     if not instructions:
         raise HTTPException(status_code=400, detail=f"Unknown segment: {segment}")
 
+    session_config = {
+        "type": "realtime",
+        "model": "gpt-realtime",
+        "instructions": instructions,
+        "audio": {
+            "input": {
+                "transcription": {
+                    "model": "gpt-4o-mini-transcribe",
+                },
+            },
+            "output": {
+                "voice": "shimmer",
+            },
+        },
+    }
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             "https://api.openai.com/v1/realtime/client_secrets",
@@ -170,19 +186,22 @@ async def get_ephemeral_token(segment: str):
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
-            json={
-                "session": {
-                    "type": "realtime",
-                    "model": "gpt-realtime",
-                    "instructions": instructions,
-                    "audio": {
-                        "output": {
-                            "voice": "shimmer",
-                        },
-                    },
-                },
-            },
+            json={"session": session_config},
         )
+
+    # If the nested transcription param was rejected, retry without it
+    if resp.status_code != 200 and "transcription" in resp.text:
+        print(f"Transcription config rejected, retrying without it: {resp.text}")
+        del session_config["audio"]["input"]
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"session": session_config},
+            )
 
     if resp.status_code != 200:
         print(f"OpenAI token error {resp.status_code}: {resp.text}")
