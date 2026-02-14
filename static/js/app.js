@@ -1,24 +1,32 @@
 // ============================================
-// Santé — Voice AI Health Platform
+// Santé — Voice Analysis Platform
 // WebRTC Realtime API connection (ephemeral token)
 // ============================================
 
 const santeBtn = document.getElementById("sante-btn");
-const btnLabel = document.querySelector(".btn-label");
+const btnLabel = document.getElementById("btn-label");
 const btnContainer = document.getElementById("btn-container");
 const statusEl = document.getElementById("status");
 const transcriptArea = document.getElementById("transcript-area");
 const transcriptScroll = document.getElementById("transcript-scroll");
-const appEl = document.querySelector(".app");
+const appEl = document.getElementById("app");
+const controls = document.getElementById("controls");
+const muteBtn = document.getElementById("mute-btn");
+const muteLabel = document.getElementById("mute-label");
+const stopBtn = document.getElementById("stop-btn");
+const introEl = document.getElementById("intro");
+const featuresEl = document.getElementById("features");
+const howItWorksEl = document.getElementById("how-it-works");
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let state = "idle"; // idle | connecting | active
-let pc = null;      // RTCPeerConnection
-let dc = null;      // DataChannel
+let pc = null;
+let dc = null;
 let audioEl = null;
 let localStream = null;
+let isMuted = false;
 
 // Transcript accumulators
 let aiTranscriptBuffer = "";
@@ -30,23 +38,31 @@ let currentAiEntry = null;
 function setState(newState) {
   state = newState;
 
-  // Button classes
   santeBtn.className = "sante-btn";
   btnContainer.className = "btn-container";
   statusEl.className = "status";
   appEl.className = "app";
+  controls.className = "controls";
 
   switch (newState) {
     case "idle":
       btnLabel.textContent = "Santé";
-      statusEl.textContent = "Tap to begin your health consultation";
+      statusEl.textContent = "Tap to begin your voice analysis";
       transcriptArea.classList.remove("visible");
+      introEl.classList.remove("hidden");
+      featuresEl.classList.remove("hidden");
+      howItWorksEl.classList.remove("hidden");
+      isMuted = false;
+      updateMuteUI();
       break;
 
     case "connecting":
       santeBtn.classList.add("connecting");
       btnLabel.textContent = "...";
       statusEl.textContent = "Connecting";
+      introEl.classList.add("hidden");
+      featuresEl.classList.add("hidden");
+      howItWorksEl.classList.add("hidden");
       break;
 
     case "active":
@@ -54,10 +70,31 @@ function setState(newState) {
       btnContainer.classList.add("active");
       statusEl.classList.add("active");
       appEl.classList.add("active");
+      controls.classList.add("visible");
+      introEl.classList.add("hidden");
+      featuresEl.classList.add("hidden");
+      howItWorksEl.classList.add("hidden");
       btnLabel.textContent = "Santé";
-      statusEl.textContent = "Listening — tap to end";
+      statusEl.textContent = "Session active";
       transcriptArea.classList.add("visible");
       break;
+  }
+}
+
+function updateMuteUI() {
+  const micOn = muteBtn.querySelector(".mic-on");
+  const micOff = muteBtn.querySelector(".mic-off");
+
+  if (isMuted) {
+    muteBtn.classList.add("muted");
+    muteLabel.textContent = "Unmute";
+    micOn.style.display = "none";
+    micOff.style.display = "block";
+  } else {
+    muteBtn.classList.remove("muted");
+    muteLabel.textContent = "Mute";
+    micOn.style.display = "block";
+    micOff.style.display = "none";
   }
 }
 
@@ -111,23 +148,23 @@ async function connect() {
     // 2. Create peer connection
     pc = new RTCPeerConnection();
 
-    // Set up remote audio playback
+    // Remote audio playback
     audioEl = document.createElement("audio");
     audioEl.autoplay = true;
     pc.ontrack = (e) => {
       audioEl.srcObject = e.streams[0];
     };
 
-    // Add local microphone track
+    // Local microphone
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     pc.addTrack(localStream.getTracks()[0]);
 
-    // Set up data channel for events
+    // Data channel
     dc = pc.createDataChannel("oai-events");
     dc.addEventListener("open", onDataChannelOpen);
     dc.addEventListener("message", onDataChannelMessage);
 
-    // 3. Create SDP offer and send directly to OpenAI
+    // 3. SDP exchange directly with OpenAI
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
@@ -145,7 +182,6 @@ async function connect() {
       throw new Error(`OpenAI SDP error: ${errText}`);
     }
 
-    // 4. Set remote SDP answer
     const sdpAnswer = await sdpResp.text();
     await pc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
 
@@ -177,17 +213,16 @@ function onDataChannelMessage(e) {
     const event = JSON.parse(e.data);
     handleRealtimeEvent(event);
   } catch {
-    // ignore non-JSON messages
+    // ignore non-JSON
   }
 }
 
 // ---------------------------------------------------------------------------
-// Handle Realtime API events
+// Realtime events
 // ---------------------------------------------------------------------------
 function handleRealtimeEvent(event) {
   switch (event.type) {
 
-    // AI is speaking — streaming transcript
     case "response.output_audio_transcript.delta":
       if (!currentAiEntry) {
         aiTranscriptBuffer = "";
@@ -198,25 +233,21 @@ function handleRealtimeEvent(event) {
       transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
       break;
 
-    // AI finished this response
     case "response.output_audio_transcript.done":
       currentAiEntry = null;
       aiTranscriptBuffer = "";
       break;
 
-    // User finished speaking — transcription
     case "conversation.item.input_audio_transcription.completed":
       if (event.transcript) {
         addTranscriptEntry("You", event.transcript);
       }
       break;
 
-    // Session created
     case "session.created":
       console.log("Session created:", event.session?.id);
       break;
 
-    // Error
     case "error":
       console.error("Realtime error:", event.error);
       break;
@@ -224,6 +255,19 @@ function handleRealtimeEvent(event) {
     default:
       break;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mute / Unmute
+// ---------------------------------------------------------------------------
+function toggleMute() {
+  if (!localStream) return;
+
+  isMuted = !isMuted;
+  localStream.getAudioTracks().forEach((track) => {
+    track.enabled = !isMuted;
+  });
+  updateMuteUI();
 }
 
 // ---------------------------------------------------------------------------
@@ -256,16 +300,16 @@ function cleanup() {
 }
 
 // ---------------------------------------------------------------------------
-// Button handler
+// Event listeners
 // ---------------------------------------------------------------------------
 santeBtn.addEventListener("click", () => {
   if (state === "idle") {
     connect();
-  } else if (state === "active") {
-    disconnect();
   }
-  // ignore clicks while connecting
+  // When active, use the dedicated stop button instead
 });
 
-// Clean up on page unload
+muteBtn.addEventListener("click", toggleMute);
+stopBtn.addEventListener("click", disconnect);
+
 window.addEventListener("beforeunload", cleanup);
