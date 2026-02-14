@@ -118,12 +118,10 @@ export const useSessionStore = create<SessionState & SessionActions>()(
 
       startSession: (segment) =>
         set({
-          segment,
-          sessionId: crypto.randomUUID(),
-          connectionStatus: "connecting",
           ...initialState,
           segment,
           sessionId: crypto.randomUUID(),
+          connectionStatus: "connecting",
         }),
 
       setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
