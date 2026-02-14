@@ -27,9 +27,10 @@ RUN pip install --no-cache-dir \
     torch==2.9.0 torchaudio==2.9.0 \
     --index-url https://download.pytorch.org/whl/cu129
 
-# k2 from local wheel (k2*cuda12.9*cp314*.whl)
-COPY k2.whl /tmp/k2.whl
-RUN pip install --no-cache-dir /tmp/k2.whl && rm /tmp/k2.whl
+# k2 from the k2-fsa wheel index
+RUN pip install --no-cache-dir \
+    "k2==1.24.4.dev20251030+cuda12.9.torch2.9.0" \
+    --find-links https://k2-fsa.github.io/k2/cuda.html
 
 # Remaining Python dependencies
 RUN pip install --no-cache-dir \

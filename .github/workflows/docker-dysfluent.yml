@@ -21,11 +21,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Download k2 wheel
-        run: |
-          curl -L -o backend/speech_processing/DysfluentWFST/k2.whl \
-            "https://github.com/AyanJhunjhunwala/sante/releases/download/k2-wheels/k2-1.24.4.dev20251030%2Bcuda12.9.torch2.9.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
-
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
