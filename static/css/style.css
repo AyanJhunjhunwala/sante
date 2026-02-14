@@ -421,6 +421,14 @@ body {
 .session-status.ai-turn { color: var(--indigo); }
 .session-status.user-turn { color: var(--blue); }
 
+.session-countdown {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-top: -10px;
+}
+
 /* Turn-based orb states */
 .btn-container.ai-speaking .sante-orb {
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);

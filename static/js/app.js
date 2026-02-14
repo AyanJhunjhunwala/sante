@@ -12,6 +12,7 @@ const shLabel = document.getElementById("sh-label");
 const btnContainer = document.getElementById("btn-container");
 const orbLabel = document.getElementById("orb-label");
 const sessionStatus = document.getElementById("session-status");
+const sessionCountdown = document.getElementById("session-countdown");
 const sessionControls = document.getElementById("session-controls");
 const muteBtn = document.getElementById("mute-btn");
 const muteLabel = document.getElementById("mute-label");
@@ -41,6 +42,13 @@ const SEGMENT_LABELS = {
   stress: "Stress & Wellness",
 };
 
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 // --- State ---
 let state = "idle"; // idle | connecting | active
 let currentSegment = null;
@@ -53,7 +61,7 @@ let aiSpeaking = false;
 let userMutedBeforeAI = false; // remember if user was manually muted
 let conversationLog = [];
 let turnSequence = 0;
-const SESSION_MAX_DURATION_MS = 90_000;
+const SESSION_MAX_DURATION_MS = 60_000;
 let sessionTimerTimeoutId = null;
 let sessionTimerIntervalId = null;
 let sessionDeadline = 0;
@@ -236,12 +244,14 @@ function resetConversationLog() {
 function updateSessionTimerVisual() {
   if (!sessionDeadline) {
     btnContainer.style.setProperty("--session-progress", "1");
+    if (sessionCountdown) sessionCountdown.textContent = formatRemainingTime(SESSION_MAX_DURATION_MS);
     return;
   }
 
   const remainingMs = Math.max(0, sessionDeadline - Date.now());
   const progress = remainingMs / SESSION_MAX_DURATION_MS;
   btnContainer.style.setProperty("--session-progress", String(progress));
+  if (sessionCountdown) sessionCountdown.textContent = formatRemainingTime(remainingMs);
 }
 
 function clearSessionTimer() {
@@ -257,6 +267,7 @@ function clearSessionTimer() {
   sessionDeadline = 0;
   btnContainer.classList.remove("timed-session");
   btnContainer.style.setProperty("--session-progress", "1");
+  if (sessionCountdown) sessionCountdown.textContent = formatRemainingTime(SESSION_MAX_DURATION_MS);
 }
 
 function startSessionTimer() {
