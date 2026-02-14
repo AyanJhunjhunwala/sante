@@ -119,43 +119,39 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
         raise HTTPException(status_code=400, detail=f"Unknown segment: {segment}")
 
     session_config = {
-        "type": "realtime",
-        "model": "gpt-realtime",
+        "model": "gpt-4o-realtime-preview",
         "instructions": instructions,
-        "audio": {
-            "input": {
-                "transcription": {
-                    "model": "gpt-4o-mini-transcribe",
-                },
-            },
-            "output": {
-                "voice": "shimmer",
-            },
+        "voice": "shimmer",
+        "input_audio_transcription": {
+            "model": "whisper-1",
+        },
+        "turn_detection": {
+            "type": "server_vad",
         },
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
-            "https://api.openai.com/v1/realtime/client_secrets",
+            "https://api.openai.com/v1/realtime/sessions",
             headers={
                 "Authorization": f"Bearer {openai_api_key}",
                 "Content-Type": "application/json",
             },
-            json={"session": session_config},
+            json=session_config,
         )
 
-    # If the nested transcription param was rejected, retry without it
+    # If transcription param rejected, retry without it
     if resp.status_code != 200 and "transcription" in resp.text:
-        print(f"Transcription config rejected, retrying without it: {resp.text}")
-        del session_config["audio"]["input"]
+        print(f"Transcription config rejected, retrying: {resp.text}")
+        del session_config["input_audio_transcription"]
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                "https://api.openai.com/v1/realtime/client_secrets",
+                "https://api.openai.com/v1/realtime/sessions",
                 headers={
                     "Authorization": f"Bearer {openai_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"session": session_config},
+                json=session_config,
             )
 
     if resp.status_code != 200:
@@ -165,4 +161,10 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
             detail=f"OpenAI error: {resp.text}",
         )
 
-    return JSONResponse(resp.json())
+    data = resp.json()
+    # Normalise: /realtime/sessions returns {"client_secret": {"value": "ek_..."}, ...}
+    # Our frontend api.ts expects {"value": "ek_..."} at the top level
+    if "client_secret" in data and "value" not in data:
+        data["value"] = data["client_secret"]["value"]
+
+    return JSONResponse(data)

@@ -69,20 +69,40 @@ export function useWebRTC() {
         }
 
         case "output_audio_buffer.started":
+          console.log("[Santé] AI speaking start, isMuted=", isMuted);
           setAiSpeaking(true);
-          if (!isMuted) setMuted(true); // auto-mute mic while AI speaks
+          if (!isMuted) {
+            setMuted(true);
+            localStreamRef.current?.getAudioTracks().forEach((t) => {
+              t.enabled = false;
+            });
+          }
           break;
 
         case "output_audio_buffer.cleared":
         case "output_audio_buffer.stopped": {
           const { userMutedBeforeAI } = store.getState();
+          console.log(
+            "[Santé] AI speaking end, userMutedBeforeAI=",
+            userMutedBeforeAI,
+          );
           setAiSpeaking(false);
-          if (!userMutedBeforeAI) setMuted(false);
+          if (!userMutedBeforeAI) {
+            setMuted(false);
+            localStreamRef.current?.getAudioTracks().forEach((t) => {
+              t.enabled = true;
+            });
+          }
           break;
         }
 
         case "error":
-          console.error("[Santé] Realtime error:", ev.error);
+          console.error("[Santé] Realtime error FULL:", JSON.stringify(ev));
+          break;
+
+        default:
+          // Log all unhandled events so we can see what OpenAI sends
+          console.log("[Santé] event:", ev.type, ev);
           break;
       }
     },
@@ -147,9 +167,9 @@ export function useWebRTC() {
 
         const dc = pc.createDataChannel("oai-events");
         dcRef.current = dc;
-        dc.addEventListener("open", () =>
-          console.log("[Santé] Data channel open"),
-        );
+        dc.addEventListener("open", () => {
+          console.log("[Santé] Data channel open");
+        });
         dc.addEventListener("message", (e) => {
           try {
             handleEvent(JSON.parse(e.data));
@@ -161,14 +181,17 @@ export function useWebRTC() {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
-          method: "POST",
-          body: offer.sdp,
-          headers: {
-            Authorization: `Bearer ${ephemeralKey}`,
-            "Content-Type": "application/sdp",
+        const sdpRes = await fetch(
+          "https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
+          {
+            method: "POST",
+            body: offer.sdp,
+            headers: {
+              Authorization: `Bearer ${ephemeralKey}`,
+              "Content-Type": "application/sdp",
+            },
           },
-        });
+        );
 
         if (!sdpRes.ok) throw new Error(await sdpRes.text());
         await pc.setRemoteDescription({
