@@ -1,6 +1,7 @@
 name: Build and Push DysfluentWFST
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'backend/speech_processing/DysfluentWFST/**'
