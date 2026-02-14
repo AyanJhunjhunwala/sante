@@ -3,108 +3,52 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Santé — Voice Biomarker Platform</title>
+  <title>Santé — Voice AI Health Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-inner">
-      <div class="logo-icon">♥</div>
-      <div class="logo-text">
-        <h1>Santé</h1>
-        <p>Voice Biomarker Platform</p>
+  <div class="app">
+
+    <!-- Subtle top branding -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <svg class="topbar-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
+                   2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 
+                   3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 
+                   3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+        </svg>
+        <span>Santé</span>
       </div>
-    </div>
-  </header>
+      <div class="topbar-badge">AI Health Assistant</div>
+    </header>
 
-  <!-- Main Content -->
-  <main class="content">
+    <!-- Center hero: the button -->
+    <main class="hero">
+      <div class="btn-container" id="btn-container">
+        <!-- Animated rings -->
+        <div class="ring ring-1"></div>
+        <div class="ring ring-2"></div>
+        <div class="ring ring-3"></div>
 
-    <!-- ========== ASR Card ========== -->
-    <section class="card">
-      <div class="card-header">
-        <div class="card-dot emerald"></div>
-        <span class="card-title">Speech to Text</span>
-        <span class="card-badge">OpenAI Whisper</span>
-      </div>
-
-      <div class="mic-area">
-        <div class="mic-wrapper">
-          <div class="mic-ring" id="mic-ring"></div>
-          <button class="mic-btn" id="mic-btn">
-            <svg fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-            </svg>
-          </button>
-        </div>
-
-        <div class="mic-timer" id="mic-timer" style="display:none">
-          <div class="dot"></div>
-          <span id="mic-timer-text">0:00</span>
-        </div>
-
-        <p class="mic-status" id="mic-status">Click to start recording</p>
-      </div>
-
-      <div class="error-box" id="asr-error"></div>
-
-      <div class="transcript-box" id="transcript-box">
-        <div class="transcript-label">Transcript</div>
-        <div class="transcript-content" id="transcript-content"></div>
-      </div>
-    </section>
-
-    <!-- ========== TTS Card ========== -->
-    <section class="card">
-      <div class="card-header">
-        <div class="card-dot blue"></div>
-        <span class="card-title">Text to Speech</span>
-        <span class="card-badge">OpenAI TTS</span>
-      </div>
-
-      <textarea
-        class="tts-textarea"
-        id="tts-text"
-        placeholder="Enter text to synthesize..."
-        rows="3"
-      ></textarea>
-
-      <div class="tts-controls">
-        <div class="tts-voice-group">
-          <label class="tts-voice-label" for="tts-voice">Voice</label>
-          <select class="tts-voice-select" id="tts-voice">
-            <option value="alloy">Alloy</option>
-            <option value="echo">Echo</option>
-            <option value="fable">Fable</option>
-            <option value="onyx">Onyx</option>
-            <option value="nova" selected>Nova</option>
-            <option value="shimmer">Shimmer</option>
-          </select>
-        </div>
-
-        <button class="tts-speak-btn" id="tts-speak-btn" disabled>
-          <svg fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          <span id="tts-btn-label">Speak</span>
+        <button class="sante-btn" id="sante-btn">
+          <span class="btn-label">Santé</span>
         </button>
       </div>
 
-      <div class="error-box" id="tts-error"></div>
+      <p class="status" id="status">Tap to begin your health consultation</p>
+    </main>
 
-      <div class="playback-indicator" id="playback-indicator">
-        <div class="playback-bars">
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-          <div class="bar"></div>
-        </div>
-        <span>Playing audio...</span>
-      </div>
-    </section>
+    <!-- Transcript area -->
+    <footer class="transcript-area" id="transcript-area">
+      <div class="transcript-scroll" id="transcript-scroll"></div>
+    </footer>
 
-  </main>
+  </div>
 
   <script src="/static/js/app.js"></script>
 </body>

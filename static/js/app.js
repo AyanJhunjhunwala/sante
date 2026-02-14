@@ -1,221 +1,245 @@
 // ============================================
-// Santé — Voice Biomarker Platform
-// Frontend logic for ASR + TTS
+// Santé — Voice AI Health Platform
+// WebRTC Realtime API connection
 // ============================================
 
+const santeBtn = document.getElementById("sante-btn");
+const btnLabel = document.querySelector(".btn-label");
+const btnContainer = document.getElementById("btn-container");
+const statusEl = document.getElementById("status");
+const transcriptArea = document.getElementById("transcript-area");
+const transcriptScroll = document.getElementById("transcript-scroll");
+const appEl = document.querySelector(".app");
+
 // ---------------------------------------------------------------------------
-// ASR (Speech-to-Text)
+// State
 // ---------------------------------------------------------------------------
-const micBtn = document.getElementById("mic-btn");
-const micRing = document.getElementById("mic-ring");
-const micStatus = document.getElementById("mic-status");
-const micTimerEl = document.getElementById("mic-timer");
-const micTimerText = document.getElementById("mic-timer-text");
-const transcriptBox = document.getElementById("transcript-box");
-const transcriptContent = document.getElementById("transcript-content");
-const asrError = document.getElementById("asr-error");
+let state = "idle"; // idle | connecting | active
+let pc = null;      // RTCPeerConnection
+let dc = null;      // DataChannel
+let audioEl = null;
 
-let mediaRecorder = null;
-let audioChunks = [];
-let isRecording = false;
-let isProcessing = false;
-let timerInterval = null;
-let seconds = 0;
+// Transcript accumulators
+let aiTranscriptBuffer = "";
+let currentAiEntry = null;
 
-function formatTime(s) {
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}
+// ---------------------------------------------------------------------------
+// UI helpers
+// ---------------------------------------------------------------------------
+function setState(newState) {
+  state = newState;
 
-function startTimer() {
-  seconds = 0;
-  micTimerText.textContent = formatTime(seconds);
-  micTimerEl.style.display = "flex";
-  timerInterval = setInterval(() => {
-    seconds++;
-    micTimerText.textContent = formatTime(seconds);
-  }, 1000);
-}
+  // Button classes
+  santeBtn.className = "sante-btn";
+  btnContainer.className = "btn-container";
+  statusEl.className = "status";
+  appEl.className = "app";
 
-function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  micTimerEl.style.display = "none";
-}
-
-function setMicState(state) {
-  micBtn.className = "mic-btn";
-  micRing.className = "mic-ring";
-  asrError.className = "error-box";
-
-  switch (state) {
+  switch (newState) {
     case "idle":
-      micBtn.innerHTML = `<svg fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-      </svg>`;
-      micStatus.textContent = "Click to start recording";
+      btnLabel.textContent = "Santé";
+      statusEl.textContent = "Tap to begin your health consultation";
+      transcriptArea.classList.remove("visible");
       break;
 
-    case "recording":
-      micBtn.classList.add("recording");
-      micRing.classList.add("active");
-      micBtn.innerHTML = `<svg fill="currentColor" viewBox="0 0 24 24">
-        <rect x="6" y="6" width="12" height="12" rx="2"/>
-      </svg>`;
-      micStatus.textContent = "Recording — click to stop";
+    case "connecting":
+      santeBtn.classList.add("connecting");
+      btnLabel.textContent = "...";
+      statusEl.textContent = "Connecting";
       break;
 
-    case "processing":
-      micBtn.classList.add("processing");
-      micBtn.innerHTML = `<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <circle cx="12" cy="12" r="10" opacity="0.2"/>
-        <path d="M4 12a8 8 0 018-8" stroke-linecap="round"/>
-      </svg>`;
-      micStatus.textContent = "Transcribing with Whisper...";
+    case "active":
+      santeBtn.classList.add("active");
+      btnContainer.classList.add("active");
+      statusEl.classList.add("active");
+      appEl.classList.add("active");
+      btnLabel.textContent = "Santé";
+      statusEl.textContent = "Listening — tap to end";
+      transcriptArea.classList.add("visible");
       break;
   }
 }
 
-async function startRecording() {
+function addTranscriptEntry(role, text) {
+  const entry = document.createElement("div");
+  entry.className = "t-entry";
+
+  const roleEl = document.createElement("span");
+  roleEl.className = `t-role ${role === "You" ? "user" : "ai"}`;
+  roleEl.textContent = role;
+
+  const textEl = document.createElement("span");
+  textEl.className = "t-text";
+  textEl.textContent = text;
+
+  entry.appendChild(roleEl);
+  entry.appendChild(textEl);
+  transcriptScroll.appendChild(entry);
+  transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
+
+  return textEl;
+}
+
+function clearTranscript() {
+  transcriptScroll.innerHTML = "";
+  aiTranscriptBuffer = "";
+  currentAiEntry = null;
+}
+
+// ---------------------------------------------------------------------------
+// WebRTC connection
+// ---------------------------------------------------------------------------
+async function connect() {
+  setState("connecting");
+  clearTranscript();
+
   try {
-    asrError.className = "error-box";
+    // Create peer connection
+    pc = new RTCPeerConnection();
+
+    // Set up remote audio playback
+    audioEl = document.createElement("audio");
+    audioEl.autoplay = true;
+    pc.ontrack = (e) => {
+      audioEl.srcObject = e.streams[0];
+    };
+
+    // Add local microphone track
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    pc.addTrack(stream.getTracks()[0]);
 
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "audio/webm";
+    // Set up data channel for events
+    dc = pc.createDataChannel("oai-events");
+    dc.addEventListener("open", onDataChannelOpen);
+    dc.addEventListener("message", onDataChannelMessage);
 
-    mediaRecorder = new MediaRecorder(stream, { mimeType });
-    audioChunks = [];
+    // Create SDP offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
 
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(audioChunks, { type: "audio/webm" });
-      await sendToASR(blob);
-    };
-
-    mediaRecorder.start();
-    isRecording = true;
-    setMicState("recording");
-    startTimer();
-  } catch {
-    asrError.textContent =
-      "Microphone access denied. Please allow microphone permissions.";
-    asrError.className = "error-box visible";
-  }
-}
-
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    isRecording = false;
-    stopTimer();
-    setMicState("processing");
-  }
-}
-
-async function sendToASR(blob) {
-  isProcessing = true;
-
-  try {
-    const formData = new FormData();
-    formData.append("audio", blob, "recording.webm");
-
-    const res = await fetch("/api/asr", { method: "POST", body: formData });
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data.detail || "Transcription failed");
-
-    transcriptContent.textContent = data.text;
-    transcriptBox.className = "transcript-box visible";
-  } catch (err) {
-    asrError.textContent = err.message || "Failed to transcribe audio";
-    asrError.className = "error-box visible";
-  } finally {
-    isProcessing = false;
-    setMicState("idle");
-  }
-}
-
-micBtn.addEventListener("click", () => {
-  if (isProcessing) return;
-  if (isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
-  }
-});
-
-// ---------------------------------------------------------------------------
-// TTS (Text-to-Speech)
-// ---------------------------------------------------------------------------
-const ttsTextarea = document.getElementById("tts-text");
-const ttsVoice = document.getElementById("tts-voice");
-const ttsSpeakBtn = document.getElementById("tts-speak-btn");
-const ttsBtnLabel = document.getElementById("tts-btn-label");
-const playbackIndicator = document.getElementById("playback-indicator");
-const ttsError = document.getElementById("tts-error");
-
-let ttsAudio = new Audio();
-let ttsLoading = false;
-
-function updateSpeakBtn() {
-  ttsSpeakBtn.disabled = !ttsTextarea.value.trim() || ttsLoading;
-}
-
-ttsTextarea.addEventListener("input", updateSpeakBtn);
-
-ttsAudio.addEventListener("play", () => {
-  playbackIndicator.className = "playback-indicator visible";
-});
-
-ttsAudio.addEventListener("ended", () => {
-  playbackIndicator.className = "playback-indicator";
-});
-
-ttsAudio.addEventListener("pause", () => {
-  playbackIndicator.className = "playback-indicator";
-});
-
-async function handleSpeak() {
-  const text = ttsTextarea.value.trim();
-  if (!text || ttsLoading) return;
-
-  ttsLoading = true;
-  ttsError.className = "error-box";
-  ttsSpeakBtn.disabled = true;
-  ttsBtnLabel.textContent = "Generating...";
-
-  try {
-    const res = await fetch("/api/tts", {
+    // Send to our backend, which forwards to OpenAI
+    const resp = await fetch("/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice: ttsVoice.value }),
+      body: offer.sdp,
+      headers: { "Content-Type": "application/sdp" },
     });
 
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.detail || "Speech generation failed");
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(errText || "Failed to create session");
     }
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    ttsAudio.src = url;
-    ttsAudio.play();
+    // Set remote SDP answer
+    const sdp = await resp.text();
+    await pc.setRemoteDescription({ type: "answer", sdp });
+
+    setState("active");
   } catch (err) {
-    ttsError.textContent = err.message || "Failed to generate speech";
-    ttsError.className = "error-box visible";
-  } finally {
-    ttsLoading = false;
-    ttsBtnLabel.textContent = "Speak";
-    updateSpeakBtn();
+    console.error("Connection error:", err);
+    statusEl.textContent = "Connection failed — tap to retry";
+    cleanup();
+    setState("idle");
   }
 }
 
-ttsSpeakBtn.addEventListener("click", handleSpeak);
+function onDataChannelOpen() {
+  console.log("Data channel open");
+}
+
+function onDataChannelMessage(e) {
+  try {
+    const event = JSON.parse(e.data);
+    handleRealtimeEvent(event);
+  } catch {
+    // ignore non-JSON messages
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Handle Realtime API events
+// ---------------------------------------------------------------------------
+function handleRealtimeEvent(event) {
+  switch (event.type) {
+
+    // AI is speaking — streaming transcript
+    case "response.output_audio_transcript.delta":
+      if (!currentAiEntry) {
+        aiTranscriptBuffer = "";
+        currentAiEntry = addTranscriptEntry("Santé", "");
+      }
+      aiTranscriptBuffer += event.delta || "";
+      currentAiEntry.textContent = aiTranscriptBuffer;
+      transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
+      break;
+
+    // AI finished this response
+    case "response.output_audio_transcript.done":
+      currentAiEntry = null;
+      aiTranscriptBuffer = "";
+      break;
+
+    // User finished speaking — transcription
+    case "conversation.item.input_audio_transcription.completed":
+      if (event.transcript) {
+        addTranscriptEntry("You", event.transcript);
+      }
+      break;
+
+    // Session created
+    case "session.created":
+      console.log("Session created:", event.session?.id);
+      break;
+
+    // Error
+    case "error":
+      console.error("Realtime error:", event.error);
+      break;
+
+    default:
+      // Log other events at debug level
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Disconnect
+// ---------------------------------------------------------------------------
+function disconnect() {
+  cleanup();
+  setState("idle");
+}
+
+function cleanup() {
+  if (dc) {
+    dc.close();
+    dc = null;
+  }
+  if (pc) {
+    pc.getSenders().forEach((sender) => {
+      if (sender.track) sender.track.stop();
+    });
+    pc.close();
+    pc = null;
+  }
+  if (audioEl) {
+    audioEl.srcObject = null;
+    audioEl = null;
+  }
+  currentAiEntry = null;
+  aiTranscriptBuffer = "";
+}
+
+// ---------------------------------------------------------------------------
+// Button handler
+// ---------------------------------------------------------------------------
+santeBtn.addEventListener("click", () => {
+  if (state === "idle") {
+    connect();
+  } else if (state === "active") {
+    disconnect();
+  }
+  // ignore clicks while connecting
+});
+
+// Clean up on page unload
+window.addEventListener("beforeunload", cleanup);

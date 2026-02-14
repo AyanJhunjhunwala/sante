@@ -1,13 +1,13 @@
 import os
-import io
+import json
 from pathlib import Path
+
+import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
-from openai import OpenAI
 
 # ---------------------------------------------------------------------------
 # Config
@@ -16,94 +16,91 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-app = FastAPI(title="Santé", description="Voice Biomarker Platform")
+SYSTEM_INSTRUCTIONS = """
+You are Santé, an AI-powered voice health assistant. You provide thoughtful,
+empathetic health guidance through natural conversation.
 
-# Static files & templates
+Your role:
+- Listen carefully to the user's health concerns and symptoms.
+- Ask clarifying follow-up questions to better understand their situation.
+- Provide general health information and wellness guidance.
+- Suggest when it might be appropriate to consult a healthcare professional.
+- Be warm, calm, and reassuring in your tone.
+
+Important guidelines:
+- You are NOT a doctor and cannot diagnose conditions or prescribe medication.
+- Always recommend consulting a healthcare professional for serious concerns.
+- Be empathetic and patient.
+- Keep responses concise and conversational — this is a voice interaction,
+  so avoid long monologues.
+- Start by warmly greeting the user and asking how you can help with their
+  health today.
+""".strip()
+
+SESSION_CONFIG = json.dumps({
+    "type": "realtime",
+    "model": "gpt-realtime",
+    "instructions": SYSTEM_INSTRUCTIONS,
+    "audio": {
+        "output": {
+            "voice": "sage",
+        },
+    },
+    "input_audio_transcription": {
+        "model": "gpt-4o-mini-transcribe",
+    },
+})
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+app = FastAPI(title="Santé", description="Voice AI Health Platform")
+
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
-def _get_openai_client() -> OpenAI:
-    """Return an OpenAI client, raising a clear error if the key is missing."""
-    if not OPENAI_API_KEY or OPENAI_API_KEY == "your_openai_api_key_here":
-        raise HTTPException(
-            status_code=500,
-            detail="OpenAI API key not configured. Set OPENAI_API_KEY in your .env file.",
-        )
-    return OpenAI(api_key=OPENAI_API_KEY)
-
-
 # ---------------------------------------------------------------------------
-# Pages
+# Routes
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-# ---------------------------------------------------------------------------
-# ASR  –  Speech-to-Text  (OpenAI Whisper)
-# ---------------------------------------------------------------------------
-@app.post("/api/asr")
-async def asr(audio: UploadFile = File(...)):
-    """Receive an audio file and return a Whisper transcription."""
-    client = _get_openai_client()
-
-    try:
-        contents = await audio.read()
-        audio_file = io.BytesIO(contents)
-        audio_file.name = audio.filename or "recording.webm"
-
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-        )
-        return JSONResponse({"text": transcription.text})
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ---------------------------------------------------------------------------
-# TTS  –  Text-to-Speech  (OpenAI TTS)
-# ---------------------------------------------------------------------------
-class TTSRequest(BaseModel):
-    text: str
-    voice: str = "nova"
-
-
-@app.post("/api/tts")
-async def tts(body: TTSRequest):
-    """Generate speech from text and return an audio stream."""
-    client = _get_openai_client()
-
-    if not body.text.strip():
-        raise HTTPException(status_code=400, detail="Text is required.")
-
-    valid_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
-    voice = body.voice if body.voice in valid_voices else "nova"
-
-    try:
-        response = client.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=body.text.strip(),
-        )
-        audio_bytes = response.content
-
-        return StreamingResponse(
-            io.BytesIO(audio_bytes),
-            media_type="audio/mpeg",
-            headers={"Content-Length": str(len(audio_bytes))},
+@app.post("/session", response_class=PlainTextResponse)
+async def create_session(request: Request):
+    """
+    Receive the browser's SDP offer, forward it alongside session config
+    to the OpenAI Realtime API, and return the SDP answer.
+    """
+    if not OPENAI_API_KEY or OPENAI_API_KEY == "your_openai_api_key_here":
+        raise HTTPException(
+            status_code=500,
+            detail="OpenAI API key not configured. Set OPENAI_API_KEY in .env",
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Read the raw SDP offer from the browser
+    sdp_offer = (await request.body()).decode("utf-8")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.openai.com/v1/realtime/calls",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            files=[
+                ("sdp", (None, sdp_offer, "application/sdp")),
+                ("session", (None, SESSION_CONFIG, "application/json")),
+            ],
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"OpenAI error: {resp.text}",
+        )
+
+    return PlainTextResponse(content=resp.text, media_type="application/sdp")
 
 
 # ---------------------------------------------------------------------------
