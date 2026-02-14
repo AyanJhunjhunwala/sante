@@ -134,20 +134,7 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
         },
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/realtime/client_secrets",
-            headers={
-                "Authorization": f"Bearer {openai_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={"session": session_config},
-        )
-
-    # If the nested transcription param was rejected, retry without it
-    if resp.status_code != 200 and "transcription" in resp.text:
-        print(f"Transcription config rejected, retrying without it: {resp.text}")
-        del session_config["audio"]["input"]
+    try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/realtime/client_secrets",
@@ -157,6 +144,41 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
                 },
                 json={"session": session_config},
             )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Timed out while requesting OpenAI realtime token",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to reach OpenAI token service: {exc}",
+        ) from exc
+
+    # If the nested transcription param was rejected, retry without it
+    if resp.status_code != 200 and "transcription" in resp.text:
+        print(f"Transcription config rejected, retrying without it: {resp.text}")
+        session_config["audio"].pop("input", None)
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/realtime/client_secrets",
+                    headers={
+                        "Authorization": f"Bearer {openai_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"session": session_config},
+                )
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="Timed out while retrying OpenAI realtime token request",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to reach OpenAI token service on retry: {exc}",
+            ) from exc
 
     if resp.status_code != 200:
         print(f"OpenAI token error {resp.status_code}: {resp.text}")
@@ -165,4 +187,12 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
             detail=f"OpenAI error: {resp.text}",
         )
 
-    return JSONResponse(resp.json())
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI token service returned non-JSON response",
+        ) from exc
+
+    return JSONResponse(payload)

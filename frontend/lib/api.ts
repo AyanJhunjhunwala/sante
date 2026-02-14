@@ -5,7 +5,22 @@ export async function fetchEphemeralToken(segment: string): Promise<string> {
   const res = await fetch(`/token/${segment}`);
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Token fetch failed (${res.status})`);
+    let detail = text.trim();
+
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown };
+        if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+          detail = parsed.detail;
+        } else if (typeof parsed.message === "string" && parsed.message.trim()) {
+          detail = parsed.message;
+        }
+      } catch {
+        // Keep raw text fallback
+      }
+    }
+
+    throw new Error(detail || `Token fetch failed (${res.status})`);
   }
   const data = await res.json();
   const key = data.value ?? data.client_secret?.value;
