@@ -398,9 +398,26 @@ body {
   font-size: 14px;
   color: var(--text-muted);
   text-align: center;
+  transition: color 0.3s ease;
 }
 
 .session-status.active { color: var(--blue); }
+.session-status.ai-turn { color: var(--indigo); }
+.session-status.user-turn { color: var(--blue); }
+
+/* Turn-based orb states */
+.btn-container.ai-speaking .sante-orb {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+}
+
+.btn-container.ai-speaking .ring {
+  border-color: rgba(99, 102, 241, 0.15);
+}
+
+.btn-container.user-speaking .sante-orb {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
 
 /* --- Controls --- */
 .session-controls {

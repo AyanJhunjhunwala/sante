@@ -49,6 +49,8 @@ let dc = null;
 let audioEl = null;
 let localStream = null;
 let isMuted = false;
+let aiSpeaking = false;
+let userMutedBeforeAI = false; // remember if user was manually muted
 let conversationLog = [];
 let turnSequence = 0;
 
@@ -108,12 +110,20 @@ function setActive() {
 // -----------------------------------------------------------------------
 // Mute UI
 // -----------------------------------------------------------------------
+function setMuted(muted) {
+  isMuted = muted;
+  if (localStream) {
+    localStream.getAudioTracks().forEach((t) => { t.enabled = !isMuted; });
+  }
+  updateMuteUI();
+}
+
 function updateMuteUI() {
   const micOn = muteBtn.querySelector(".mic-on");
   const micOff = muteBtn.querySelector(".mic-off");
   if (isMuted) {
     muteBtn.classList.add("muted");
-    muteLabel.textContent = "Unmute";
+    muteLabel.textContent = aiSpeaking ? "Interrupt" : "Unmute";
     micOn.style.display = "none";
     micOff.style.display = "block";
   } else {
@@ -122,6 +132,52 @@ function updateMuteUI() {
     micOn.style.display = "block";
     micOff.style.display = "none";
   }
+}
+
+function updateTurnUI() {
+  if (aiSpeaking) {
+    sessionStatus.textContent = "Santé is speaking — tap Interrupt to respond";
+    sessionStatus.className = "session-status active ai-turn";
+    btnContainer.classList.add("ai-speaking");
+    btnContainer.classList.remove("user-speaking");
+  } else {
+    sessionStatus.textContent = "Your turn — speak naturally";
+    sessionStatus.className = "session-status active user-turn";
+    btnContainer.classList.remove("ai-speaking");
+    btnContainer.classList.add("user-speaking");
+  }
+}
+
+function onAISpeakStart() {
+  if (aiSpeaking) return;
+  aiSpeaking = true;
+  userMutedBeforeAI = isMuted;
+  // Auto-mute the mic so it doesn't pick up AI output
+  if (!isMuted) setMuted(true);
+  updateTurnUI();
+  updateMuteUI();
+}
+
+function onAISpeakEnd() {
+  if (!aiSpeaking) return;
+  aiSpeaking = false;
+  // Restore mic: unmute unless user had manually muted before
+  if (!userMutedBeforeAI) setMuted(false);
+  updateTurnUI();
+  updateMuteUI();
+}
+
+function bargeIn() {
+  // Cancel current AI response so user can speak
+  if (dc && dc.readyState === "open") {
+    dc.send(JSON.stringify({ type: "response.cancel" }));
+    console.log("[Santé] Barge-in: cancelled AI response");
+  }
+  aiSpeaking = false;
+  setMuted(false);
+  userMutedBeforeAI = false;
+  updateTurnUI();
+  updateMuteUI();
 }
 
 // -----------------------------------------------------------------------
@@ -419,6 +475,19 @@ function handleEvent(ev) {
       }
       break;
 
+    case "response.done":
+      break;
+
+    // ── Audio playback tracking (controls mute) ──
+    case "output_audio_buffer.started":
+      onAISpeakStart();
+      break;
+
+    case "output_audio_buffer.cleared":
+    case "output_audio_buffer.stopped":
+      onAISpeakEnd();
+      break;
+
     case "session.created":
       console.log("[Santé] Session created:", ev.session?.id);
       break;
@@ -441,9 +510,16 @@ function handleEvent(ev) {
 // -----------------------------------------------------------------------
 function toggleMute() {
   if (!localStream) return;
-  isMuted = !isMuted;
-  localStream.getAudioTracks().forEach((t) => { t.enabled = !isMuted; });
-  updateMuteUI();
+
+  if (aiSpeaking) {
+    // User taps while AI is speaking → barge-in: cancel AI, unmute user
+    bargeIn();
+    return;
+  }
+
+  // Normal toggle
+  setMuted(!isMuted);
+  userMutedBeforeAI = isMuted;
 }
 
 async function endSession() {
@@ -474,6 +550,8 @@ function cleanup() {
   if (pc) { pc.close(); pc = null; }
   if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
   if (audioEl) { audioEl.srcObject = null; audioEl = null; }
+  aiSpeaking = false;
+  userMutedBeforeAI = false;
   resetConversationLog();
 }
 
