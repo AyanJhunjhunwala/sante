@@ -85,19 +85,25 @@ async def create_session(request: Request):
         resp = await client.post(
             "https://api.openai.com/v1/realtime/calls",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            files=[
-                ("sdp", (None, sdp_offer, "application/sdp")),
-                ("session", (None, SESSION_CONFIG, "application/json")),
-            ],
+            files=[("sdp", (None, sdp_offer)), ("session", (None, SESSION_CONFIG))],
         )
 
     if resp.status_code != 200:
+        print(f"OpenAI error {resp.status_code}: {resp.text}")
         raise HTTPException(
             status_code=resp.status_code,
             detail=f"OpenAI error: {resp.text}",
         )
 
-    return PlainTextResponse(content=resp.text, media_type="application/sdp")
+    sdp_answer = resp.text
+    if not sdp_answer or not sdp_answer.startswith("v="):
+        print(f"Unexpected SDP response: {sdp_answer[:200]}")
+        raise HTTPException(
+            status_code=502,
+            detail="Invalid SDP answer from OpenAI",
+        )
+
+    return PlainTextResponse(content=sdp_answer, media_type="application/sdp")
 
 
 # ---------------------------------------------------------------------------
