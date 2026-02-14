@@ -46,6 +46,6 @@ COPY . .
 
 # Bake Wav2Vec2 model into image (~1.2 GB) to avoid cold-start downloads
 ENV HF_HOME=/app/hf_cache
-RUN huggingface-cli download facebook/wav2vec2-xlsr-53-phon-cv-ft
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('facebook/wav2vec2-xlsr-53-phon-cv-ft')"
 
 CMD ["python", "-u", "handler.py"]
