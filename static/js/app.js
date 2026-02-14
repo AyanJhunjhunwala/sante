@@ -144,6 +144,16 @@ async function connect() {
 
 function onDataChannelOpen() {
   console.log("Data channel open");
+
+  // Enable input audio transcription (not supported in initial session config)
+  dc.send(JSON.stringify({
+    type: "session.update",
+    session: {
+      input_audio_transcription: {
+        model: "gpt-4o-mini-transcribe",
+      },
+    },
+  }));
 }
 
 function onDataChannelMessage(e) {

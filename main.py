@@ -46,9 +46,6 @@ SESSION_CONFIG = json.dumps({
             "voice": "sage",
         },
     },
-    "input_audio_transcription": {
-        "model": "gpt-4o-mini-transcribe",
-    },
 })
 
 # ---------------------------------------------------------------------------
