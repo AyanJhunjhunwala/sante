@@ -351,6 +351,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  --session-progress: 1;
+  --timer-color: var(--blue);
+}
+
+.btn-container.timed-session::after {
+  content: "";
+  position: absolute;
+  width: 188px;
+  height: 188px;
+  border-radius: 50%;
+  background: conic-gradient(var(--timer-color) calc(var(--session-progress) * 1turn), rgba(148, 163, 184, 0.15) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  z-index: 3;
+  pointer-events: none;
+  transition: background 0.1s linear;
 }
 
 /* Rings */
@@ -411,6 +427,8 @@ body {
   box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
 }
 
+.btn-container.ai-speaking { --timer-color: var(--indigo); }
+
 .btn-container.ai-speaking .ring {
   border-color: rgba(99, 102, 241, 0.15);
 }
@@ -418,6 +436,8 @@ body {
 .btn-container.user-speaking .sante-orb {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 }
+
+.btn-container.user-speaking { --timer-color: var(--blue); }
 
 /* --- Controls --- */
 .session-controls {
