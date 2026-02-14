@@ -16,7 +16,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # ---------------------------------------------------------------------------
-# System prompts for each analysis segment
+# System prompts for each analysis segment (english-only)
 # ---------------------------------------------------------------------------
 
 PROMPT_SPEECH = """
