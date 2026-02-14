@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Santé — Voice Analysis</title>
+  <title>Santé — Voice Health Analysis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -11,124 +11,183 @@
 </head>
 <body>
 
-  <div class="app" id="app">
+<div class="app" id="app">
 
-    <!-- Top bar -->
-    <header class="topbar">
-      <div class="topbar-brand">
-        <svg class="topbar-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5
-                   2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09
-                   3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0
-                   3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-        </svg>
-        <span>Santé</span>
-      </div>
-      <div class="topbar-badge">Voice Analysis</div>
-    </header>
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <svg class="topbar-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5
+                 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09
+                 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0
+                 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+      </svg>
+      <span>Santé</span>
+    </div>
+    <div class="topbar-badge">Voice Health Analysis</div>
+  </header>
+
+  <!-- ===== LANDING PAGE (visible when idle) ===== -->
+  <div class="landing" id="landing">
 
     <!-- Hero -->
-    <main class="hero">
+    <section class="hero-section">
+      <h1 class="hero-h1">Your voice reveals more<br/>than words</h1>
+      <p class="hero-sub">Santé uses AI-powered voice analysis to detect speech patterns linked to neurological health, cardiovascular wellness, and emotional wellbeing — all through a simple conversation.</p>
+    </section>
 
-      <!-- Intro content (visible only when idle) -->
-      <div class="intro" id="intro">
-        <h2 class="intro-headline">Your voice tells a story</h2>
-        <p class="intro-sub">AI-powered voice analysis to help you understand your health and wellbeing through natural conversation.</p>
+    <!-- Research highlight cards -->
+    <section class="research-section">
+      <div class="section-label">Backed by Research</div>
+      <div class="research-grid">
+
+        <div class="research-card">
+          <div class="rc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg>
+          </div>
+          <h3 class="rc-title">Voice & Parkinson's</h3>
+          <p class="rc-body">Pfizer and MIT researchers found that a sustained "aaaah" into a phone can detect early Parkinson's signs — vocal cord tremors, breathiness, and jaw fluctuations invisible to the human ear.</p>
+          <a class="rc-link" href="https://www.pfizer.com/news/articles/diagnosing_disease_by_voice" target="_blank" rel="noopener">Pfizer Research &rarr;</a>
+        </div>
+
+        <div class="research-card">
+          <div class="rc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </div>
+          <h3 class="rc-title">Voice & Heart Disease</h3>
+          <p class="rc-body">The Mayo Clinic found a 19-fold association between certain voice patterns and coronary artery disease. The strongest signals appeared when patients described negative experiences.</p>
+          <a class="rc-link" href="https://www.pfizer.com/news/articles/diagnosing_disease_by_voice" target="_blank" rel="noopener">Learn More &rarr;</a>
+        </div>
+
+        <div class="research-card">
+          <div class="rc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </div>
+          <h3 class="rc-title">Voice & Mental Health</h3>
+          <p class="rc-body">NIH researchers at Emory and Georgia Tech use speech tone, word choice, and pause patterns to detect depression and anxiety early — measurable changes the human ear often misses.</p>
+          <a class="rc-link" href="https://newsinhealth.nih.gov/2024/08/sound-check" target="_blank" rel="noopener">NIH Research &rarr;</a>
+        </div>
+
       </div>
+    </section>
 
-      <!-- Button -->
+    <!-- Three analysis segments -->
+    <section class="segments-section">
+      <div class="section-label">Choose Your Analysis</div>
+      <div class="segments-grid">
+
+        <button class="segment-card" data-segment="speech">
+          <div class="sc-badge">Session 1</div>
+          <div class="sc-icon sc-icon-speech">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </div>
+          <h3 class="sc-title">Speech Patterns</h3>
+          <p class="sc-desc">Analyze articulation, vocal tremor, and motor speech coordination linked to neurological conditions.</p>
+          <div class="sc-tasks">
+            <span class="sc-task">Sustained vowel</span>
+            <span class="sc-task">Tongue twisters</span>
+            <span class="sc-task">Counting</span>
+          </div>
+          <div class="sc-cta">Begin Analysis &rarr;</div>
+        </button>
+
+        <button class="segment-card" data-segment="health">
+          <div class="sc-badge">Session 2</div>
+          <div class="sc-icon sc-icon-health">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+          </div>
+          <h3 class="sc-title">General Health</h3>
+          <p class="sc-desc">Monitor respiratory capacity, vocal energy, and emotional pitch range tied to cardiovascular and metabolic health.</p>
+          <div class="sc-tasks">
+            <span class="sc-task">Breath support</span>
+            <span class="sc-task">Vocal energy</span>
+            <span class="sc-task">Emotional range</span>
+          </div>
+          <div class="sc-cta">Begin Analysis &rarr;</div>
+        </button>
+
+        <button class="segment-card" data-segment="stress">
+          <div class="sc-badge">Session 3</div>
+          <div class="sc-icon sc-icon-stress">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </div>
+          <h3 class="sc-title">Stress & Wellness</h3>
+          <p class="sc-desc">Assess stress levels, mood indicators, and emotional wellbeing through vocal biomarkers and guided relaxation.</p>
+          <div class="sc-tasks">
+            <span class="sc-task">Mood check-in</span>
+            <span class="sc-task">Stress speech</span>
+            <span class="sc-task">Breathing exercise</span>
+          </div>
+          <div class="sc-cta">Begin Analysis &rarr;</div>
+        </button>
+
+      </div>
+    </section>
+
+    <!-- Bottom note -->
+    <div class="landing-footer">
+      <p>Santé is a research tool, not a medical device. Always consult a healthcare professional for medical advice.</p>
+    </div>
+
+  </div>
+
+  <!-- ===== ACTIVE SESSION VIEW (hidden until session starts) ===== -->
+  <div class="session-view" id="session-view">
+
+    <div class="session-header" id="session-header">
+      <div class="sh-dot"></div>
+      <span class="sh-label" id="sh-label">Speech Patterns</span>
+    </div>
+
+    <div class="session-hero">
       <div class="btn-container" id="btn-container">
         <div class="ring ring-1"></div>
         <div class="ring ring-2"></div>
         <div class="ring ring-3"></div>
-
-        <button class="sante-btn" id="sante-btn">
-          <span class="btn-label" id="btn-label">Santé</span>
-        </button>
-      </div>
-
-      <p class="status" id="status">Tap to begin your voice analysis</p>
-
-      <!-- Controls: mute + stop (hidden until active) -->
-      <div class="controls" id="controls">
-        <button class="ctrl-btn mute-btn" id="mute-btn" title="Mute microphone">
-          <svg class="ctrl-icon mic-on" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-          </svg>
-          <svg class="ctrl-icon mic-off" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-            <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
-          </svg>
-          <span class="ctrl-label" id="mute-label">Mute</span>
-        </button>
-
-        <button class="ctrl-btn stop-btn" id="stop-btn" title="End session">
-          <svg class="ctrl-icon" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
-          </svg>
-          <span class="ctrl-label">End</span>
-        </button>
-      </div>
-
-      <!-- Feature chips (visible only when idle) -->
-      <div class="features" id="features">
-        <div class="feature-chip">
-          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 12h4l3-9 4 18 3-9h4"/>
-          </svg>
-          <span>Vocal Patterns</span>
-        </div>
-        <div class="feature-chip">
-          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
-            <path d="M12 6v6l4 2"/>
-          </svg>
-          <span>Stress Detection</span>
-        </div>
-        <div class="feature-chip">
-          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-          </svg>
-          <span>Wellness Check</span>
+        <div class="sante-orb" id="sante-orb">
+          <span class="orb-label" id="orb-label">Santé</span>
         </div>
       </div>
-
-    </main>
-
-    <!-- How it works (visible only when idle) -->
-    <div class="how-it-works" id="how-it-works">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-text">
-          <span class="step-title">Start</span>
-          <span class="step-desc">Tap the button above</span>
-        </div>
-      </div>
-      <div class="step-divider"></div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-text">
-          <span class="step-title">Talk</span>
-          <span class="step-desc">Have a natural conversation</span>
-        </div>
-      </div>
-      <div class="step-divider"></div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <div class="step-text">
-          <span class="step-title">Insights</span>
-          <span class="step-desc">Get voice-based health insights</span>
-        </div>
-      </div>
+      <p class="session-status" id="session-status">Connecting...</p>
     </div>
 
-    <!-- Transcript -->
-    <footer class="transcript-area" id="transcript-area">
+    <div class="session-controls" id="session-controls">
+      <button class="ctrl-btn mute-btn" id="mute-btn" title="Mute">
+        <svg class="ctrl-icon mic-on" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+        <svg class="ctrl-icon mic-off" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+          <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
+        </svg>
+        <span class="ctrl-label" id="mute-label">Mute</span>
+      </button>
+      <button class="ctrl-btn stop-btn" id="stop-btn" title="End session">
+        <svg class="ctrl-icon" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+        <span class="ctrl-label">End Session</span>
+      </button>
+    </div>
+
+    <div class="transcript-area" id="transcript-area">
       <div class="transcript-scroll" id="transcript-scroll"></div>
-    </footer>
+    </div>
 
   </div>
 
-  <script src="/static/js/app.js"></script>
+</div>
+
+<script src="/static/js/app.js"></script>
 </body>
 </html>
