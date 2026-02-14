@@ -494,11 +494,16 @@ function closeResults() {
 }
 
 async function runStressAnalysis(audioBlob) {
+  const loadingSub = document.getElementById("results-loading-sub");
+
   try {
     console.log(`[Santé] Uploading ${audioBlob.size} bytes to /api/analyze/stress`);
+    if (loadingSub) loadingSub.textContent = "Uploading recording...";
 
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
+
+    if (loadingSub) loadingSub.textContent = "Running stress detection — warming up model, this may take up to a minute...";
 
     const resp = await fetch("/api/analyze/stress", {
       method: "POST",

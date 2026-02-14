@@ -3,7 +3,7 @@ Stress Detector Agent
 Calls the RunPod-hosted stress detection model with base64-encoded audio.
 Returns: prediction (STRESSED / NOT STRESSED), confidence, and raw scores.
 
-Uses the async /run endpoint + polling to survive cold starts.
+Uses async /run + polling, with automatic retries for cold-start errors.
 """
 
 import asyncio
@@ -14,13 +14,30 @@ import httpx
 
 RUNPOD_BASE = "https://api.runpod.ai/v2/bfl4ave2lkfph1"
 POLL_INTERVAL = 2          # seconds between status checks
-MAX_POLL_TIME = 120        # give up after 2 minutes
+MAX_POLL_TIME = 120        # per-attempt timeout
+MAX_RETRIES = 3            # retry on cold-start errors
+RETRY_DELAY = 8            # seconds to wait before retry (let model load)
+
+# Errors that indicate the worker is still initializing
+COLD_START_ERRORS = [
+    "not initialized",
+    "loading",
+    "warming",
+    "starting",
+    "model not loaded",
+]
+
+
+def _is_cold_start_error(error_msg: str) -> bool:
+    """Check if an error is a transient cold-start issue."""
+    lower = (error_msg or "").lower()
+    return any(phrase in lower for phrase in COLD_START_ERRORS)
 
 
 async def analyze_stress(audio_bytes: bytes) -> dict:
     """
     Send audio bytes to the RunPod stress detector.
-    Uses /run (async) + /status polling so cold starts don't time out.
+    Retries automatically if the worker is still cold-starting.
     """
     api_key = os.getenv("RUNPOD_API_KEY", "")
 
@@ -32,67 +49,119 @@ async def analyze_stress(audio_bytes: bytes) -> dict:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    payload = {"input": {"audio_base64": audio_b64}}
 
-    print(f"[stress_detector] Sending {len(audio_bytes)} bytes to RunPod (async)...")
+    for attempt in range(1, MAX_RETRIES + 1):
+        print(f"[stress_detector] Attempt {attempt}/{MAX_RETRIES} — "
+              f"sending {len(audio_bytes)} bytes...")
 
+        result = await _submit_and_poll(headers, payload)
+
+        # If it succeeded or is a non-retryable error, return immediately
+        if "error" not in result:
+            return result
+
+        if not _is_cold_start_error(result["error"]):
+            print(f"[stress_detector] Non-retryable error: {result['error']}")
+            return result
+
+        # Cold-start error — wait and retry
+        if attempt < MAX_RETRIES:
+            print(f"[stress_detector] Cold-start error: {result['error']}. "
+                  f"Waiting {RETRY_DELAY}s before retry...")
+            await asyncio.sleep(RETRY_DELAY)
+
+    # All retries exhausted
+    return result
+
+
+async def _submit_and_poll(headers: dict, payload: dict) -> dict:
+    """Submit a job via /run and poll /status until done."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # 1. Submit the job asynchronously
-        submit_resp = await client.post(
+        # 1. Submit
+        resp = await client.post(
             f"{RUNPOD_BASE}/run",
             headers=headers,
-            json={"input": {"audio_base64": audio_b64}},
+            json=payload,
         )
 
-        if submit_resp.status_code != 200:
-            print(f"[stress_detector] Submit failed {submit_resp.status_code}: {submit_resp.text[:500]}")
-            return {"error": f"RunPod submit failed: {submit_resp.text}"}
+        if resp.status_code != 200:
+            body = resp.text[:500]
+            print(f"[stress_detector] Submit failed {resp.status_code}: {body}")
+            return {"error": f"RunPod submit error ({resp.status_code}): {body}"}
 
-        job = submit_resp.json()
+        job = resp.json()
         job_id = job.get("id")
         status = job.get("status")
-        print(f"[stress_detector] Job submitted: id={job_id}, status={status}")
+        print(f"[stress_detector] Job {job_id}: status={status}")
 
-        # If it completed immediately (warm worker), use the result
+        # Immediate completion (warm worker)
         if status == "COMPLETED":
             return _extract_results(job)
 
         if status == "FAILED":
-            return {"error": job.get("error", "RunPod job failed immediately")}
+            err = job.get("error") or job.get("output", {}).get("error", "Job failed")
+            return {"error": str(err)}
 
-        # 2. Poll for completion
+        # 2. Poll
         elapsed = 0
         while elapsed < MAX_POLL_TIME:
             await asyncio.sleep(POLL_INTERVAL)
             elapsed += POLL_INTERVAL
 
-            poll_resp = await client.get(
+            poll = await client.get(
                 f"{RUNPOD_BASE}/status/{job_id}",
                 headers=headers,
             )
 
-            if poll_resp.status_code != 200:
-                print(f"[stress_detector] Poll error {poll_resp.status_code}: {poll_resp.text[:300]}")
+            if poll.status_code != 200:
+                print(f"[stress_detector] Poll error {poll.status_code}")
                 continue
 
-            poll_data = poll_resp.json()
-            status = poll_data.get("status")
-            print(f"[stress_detector] Poll: status={status} ({elapsed}s elapsed)")
+            data = poll.json()
+            status = data.get("status")
+            print(f"[stress_detector] Poll {job_id}: status={status} ({elapsed}s)")
 
             if status == "COMPLETED":
-                return _extract_results(poll_data)
+                return _extract_results(data)
 
             if status == "FAILED":
-                return {"error": poll_data.get("error", "RunPod job failed")}
+                err = (data.get("error")
+                       or _get_output_error(data)
+                       or "Job failed")
+                return {"error": str(err)}
 
-            # IN_QUEUE or IN_PROGRESS — keep polling
+    return {"error": f"Timed out after {MAX_POLL_TIME}s"}
 
-    return {"error": f"Stress analysis timed out after {MAX_POLL_TIME}s"}
+
+def _get_output_error(data: dict) -> str | None:
+    """Check if the output itself contains an error message."""
+    output = data.get("output")
+    if isinstance(output, str):
+        return output
+    if isinstance(output, dict):
+        return output.get("error")
+    return None
 
 
 def _extract_results(data: dict) -> dict:
     """Pull prediction/confidence from the RunPod response envelope."""
     output = data.get("output", {})
+
+    # Handle string output (error as plain text)
+    if isinstance(output, str):
+        return {"error": output}
+
+    # Check for error inside output
+    if "error" in output and "results" not in output:
+        return {"error": output["error"]}
+
     results = output.get("results", output)
+
+    # Handle case where results is also a string
+    if isinstance(results, str):
+        return {"error": results}
+
     print(f"[stress_detector] Results: {results}")
 
     return {
