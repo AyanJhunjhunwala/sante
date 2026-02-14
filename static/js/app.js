@@ -216,14 +216,46 @@ function onDCOpen() {
 }
 
 function onDCMessage(e) {
-  try { handleEvent(JSON.parse(e.data)); } catch {}
+  try {
+    const ev = JSON.parse(e.data);
+    handleEvent(ev);
+  } catch (err) {
+    console.error("[Santé] Error handling realtime event:", err, e.data);
+  }
 }
 
 // -----------------------------------------------------------------------
 // Realtime events
 // -----------------------------------------------------------------------
+function extractUserTranscript(ev) {
+  // Field location varies by API version — check all known shapes
+  if (typeof ev.transcript === "string") return ev.transcript;
+  if (ev.content_part?.transcript) return ev.content_part.transcript;
+  if (Array.isArray(ev.content)) {
+    for (const c of ev.content) {
+      if (c.transcript) return c.transcript;
+    }
+  }
+  if (ev.part?.transcript) return ev.part.transcript;
+  return "";
+}
+
+function appendUserTurn(text) {
+  const userText = (text || "").trim();
+  if (!userText) return;
+
+  // Dedup: skip if last user turn has identical text
+  const lastTurn = conversationLog[conversationLog.length - 1];
+  if (lastTurn && lastTurn.role === "user" && lastTurn.status === "final" && lastTurn.text === userText) return;
+
+  conversationLog.push(newTurn("user", userText, "final"));
+  renderConversationLog();
+}
+
 function handleEvent(ev) {
   switch (ev.type) {
+    // ── AI transcript (streaming) ──
+    case "response.audio_transcript.delta":
     case "response.output_audio_transcript.delta":
       if (!ev.delta) break;
       {
@@ -237,6 +269,7 @@ function handleEvent(ev) {
       }
       break;
 
+    case "response.audio_transcript.done":
     case "response.output_audio_transcript.done":
       {
         for (let i = conversationLog.length - 1; i >= 0; i--) {
@@ -250,31 +283,40 @@ function handleEvent(ev) {
       }
       break;
 
+    // ── User transcript ──
     case "conversation.item.input_audio_transcription.completed":
-      {
-        const userText = (ev.transcript || "").trim();
-        if (!userText) break;
-
-        const lastTurn = conversationLog[conversationLog.length - 1];
-        const isDuplicate =
-          lastTurn
-          && lastTurn.role === "user"
-          && lastTurn.status === "final"
-          && lastTurn.text === userText;
-
-        if (!isDuplicate) {
-          conversationLog.push(newTurn("user", userText, "final"));
-          renderConversationLog();
-        }
-      }
+      console.log("[Santé] User transcription completed:", ev);
+      appendUserTurn(extractUserTranscript(ev));
       break;
 
+    case "conversation.item.input_audio_transcription.failed":
+      console.warn("[Santé] User transcription FAILED:", ev.error || ev);
+      break;
+
+    // ── Session lifecycle ──
     case "session.created":
-      console.log("Session:", ev.session?.id);
+      console.log("[Santé] Session created:", ev.session?.id);
+      break;
+
+    case "session.updated":
+      console.log("[Santé] Session config accepted:", ev.session?.input_audio_transcription);
       break;
 
     case "error":
-      console.error("Realtime error:", ev.error);
+      console.error("[Santé] Realtime error:", ev.error);
+      break;
+
+    default:
+      // Log ALL unhandled event types so nothing is invisible
+      if (!ev.type?.startsWith("response.audio.")
+          && !ev.type?.startsWith("input_audio_buffer.")
+          && ev.type !== "response.created"
+          && ev.type !== "response.done"
+          && ev.type !== "response.output_item.added"
+          && ev.type !== "response.output_item.done"
+          && ev.type !== "conversation.item.created") {
+        console.log("[Santé] Unhandled event:", ev.type, ev);
+      }
       break;
   }
 }
