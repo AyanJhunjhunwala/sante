@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from agents.phoneme_detector import analyze_phonemes
 from agents.stress_detector import analyze_stress
+from services.acoustic_features import analyze_acoustics
 
 router = APIRouter(prefix="/api/analyze", tags=["analysis"])
 
@@ -23,6 +24,25 @@ async def api_analyze_stress(audio: UploadFile = File(...)) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Audio too short")
 
     result = await analyze_stress(audio_bytes)
+
+    if "error" in result:
+        raise HTTPException(status_code=502, detail=result["error"])
+
+    return JSONResponse(result)
+
+
+@router.post("/acoustics")
+async def api_analyze_acoustics(audio: UploadFile = File(...)) -> JSONResponse:
+    """
+    Extract acoustic voice biomarkers (F0, jitter, shimmer, HNR, loudness,
+    speech rate) from recorded audio using openSMILE eGeMAPSv02.
+    """
+    audio_bytes = await audio.read()
+
+    if len(audio_bytes) < 1000:
+        raise HTTPException(status_code=400, detail="Audio too short")
+
+    result = analyze_acoustics(audio_bytes)
 
     if "error" in result:
         raise HTTPException(status_code=502, detail=result["error"])

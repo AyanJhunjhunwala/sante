@@ -7,7 +7,8 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
 import { useWaveform } from "@/hooks/useWaveform";
-import { analyzePhonemes, fetchSessionSummary } from "@/lib/api";
+import { analyzePhonemes, analyzeAcoustics, fetchSessionSummary } from "@/lib/api";
+import type { DysfluencyEntry } from "@/lib/types";
 import {
   VALID_SEGMENTS,
   SEGMENT_LABELS,
@@ -99,17 +100,29 @@ export default function SessionPage() {
     // Show loading screen while we analyze
     store.getState().setResultsLoading();
     try {
-      // Run phoneme analysis on the full audio, then build the report
+      // Run phoneme + acoustic analysis in parallel, then build the report
       let detectedPhonemes: string[] = [];
-      let detectedDysDetect: string[] = [];
+      let detectedDysDetect: DysfluencyEntry[] = [];
+      let acousticFeatures: Record<string, number> | null = null;
 
       if (audioBlob && audioBlob.size > 1000) {
-        const phonemeResult = await analyzePhonemes(
-          audioBlob,
-          userTranscription,
-        );
-        detectedPhonemes = phonemeResult.decode_phonemes;
-        detectedDysDetect = phonemeResult.dys_detect;
+        const [phonemeResult, acousticResult] = await Promise.allSettled([
+          analyzePhonemes(audioBlob, userTranscription),
+          analyzeAcoustics(audioBlob),
+        ]);
+
+        if (phonemeResult.status === "fulfilled") {
+          detectedPhonemes = phonemeResult.value.decode_phonemes;
+          detectedDysDetect = phonemeResult.value.dys_detect;
+        } else {
+          console.warn("Phoneme analysis failed:", phonemeResult.reason);
+        }
+
+        if (acousticResult.status === "fulfilled") {
+          acousticFeatures = acousticResult.value;
+        } else {
+          console.warn("Acoustic analysis failed:", acousticResult.reason);
+        }
       }
 
       const report = await fetchSessionSummary({
@@ -119,6 +132,7 @@ export default function SessionPage() {
         duration_seconds: durationSeconds,
         detected_phonemes: detectedPhonemes,
         detected_dys_detect: detectedDysDetect,
+        acoustic_features: acousticFeatures,
       });
       store.getState().setSummaryReport(report);
     } catch (err) {

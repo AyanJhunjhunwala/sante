@@ -12,6 +12,12 @@ export const SESSION_MAX_MS = 60_000; // 1 minute
 
 export const API_BASE = ""; // empty = same origin (Next.js rewrites proxy to :8000)
 
+/** Direct backend URL — bypasses Next.js proxy for long-running requests (RunPod cold starts). */
+export const BACKEND_URL =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "" // production: use same-origin proxy
+    : "http://localhost:8000";
+
 export const WS_BASE =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
     ? `wss://${window.location.host}`

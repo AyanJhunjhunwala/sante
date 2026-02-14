@@ -14,9 +14,11 @@ import base64
 
 import httpx
 
-RUNPOD_BASE = "https://api.runpod.ai/v2/bfl4ave2lkfph1"
+from services.audio_convert import to_wav_bytes
+
+RUNPOD_BASE = "https://api.runpod.ai/v2/eib51lbk8ca3wl"
 POLL_INTERVAL = 2  # seconds between status checks
-MAX_POLL_TIME = 60  # shorter timeout for real-time use
+MAX_POLL_TIME = 300  # 5 min — cold starts on 23GB image can take 2-3 min
 MAX_RETRIES = 2  # fewer retries — real-time context
 RETRY_DELAY = 6  # seconds to wait before retry
 
@@ -34,7 +36,7 @@ def _is_cold_start_error(error_msg: str) -> bool:
     return any(phrase in lower for phrase in COLD_START_ERRORS)
 
 
-async def analyze_phonemes(audio_bytes: bytes, ref_text: str) -> dict:
+async def analyze_phonemes(audio_bytes: bytes, ref_text: str = "") -> dict:
     """
     Send audio bytes + reference text to the RunPod phoneme model.
     Returns dict with ref_phonemes, decode_phonemes, dys_detect on success,
@@ -45,7 +47,9 @@ async def analyze_phonemes(audio_bytes: bytes, ref_text: str) -> dict:
     if not api_key or api_key.startswith("your_"):
         return {"error": "RUNPOD_API_KEY not configured in .env"}
 
-    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    # Convert webm/opus → WAV so the RunPod handler (soundfile) can parse it
+    wav_bytes = to_wav_bytes(audio_bytes)
+    audio_b64 = base64.b64encode(wav_bytes).decode("utf-8")
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -55,7 +59,7 @@ async def analyze_phonemes(audio_bytes: bytes, ref_text: str) -> dict:
     for attempt in range(1, MAX_RETRIES + 1):
         print(
             f"[phoneme_detector] Attempt {attempt}/{MAX_RETRIES} — "
-            f"sending {len(audio_bytes)} bytes, ref_text={repr(ref_text[:60])}"
+            f"sending {len(wav_bytes)} wav bytes (from {len(audio_bytes)} input), ref_text={repr(ref_text[:60])}"
         )
 
         result = await _submit_and_poll(headers, payload)

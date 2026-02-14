@@ -1,4 +1,5 @@
-import type { AnalysisResults, SummaryReport } from "./types";
+import type { AnalysisResults, DysfluencyEntry, SummaryReport } from "./types";
+import { BACKEND_URL } from "./constants";
 
 /** Fetch an ephemeral OpenAI Realtime token for the given segment. */
 export async function fetchEphemeralToken(segment: string): Promise<string> {
@@ -41,13 +42,13 @@ export async function analyzePhonemes(
 ): Promise<{
   ref_phonemes: string[];
   decode_phonemes: string[];
-  dys_detect: string[];
+  dys_detect: { dysfluency_type: string; phoneme: string; start_state: number; end_state: number }[];
 }> {
   const form = new FormData();
   form.append("audio", audioBlob, "recording.webm");
   if (refText) form.append("ref_text", refText);
 
-  const res = await fetch("/api/analyze/phonemes", {
+  const res = await fetch(`${BACKEND_URL}/api/analyze/phonemes`, {
     method: "POST",
     body: form,
   });
@@ -65,7 +66,7 @@ export async function analyzeStress(audioBlob: Blob): Promise<AnalysisResults> {
   const form = new FormData();
   form.append("audio", audioBlob, "recording.webm");
 
-  const res = await fetch("/api/analyze/stress", {
+  const res = await fetch(`${BACKEND_URL}/api/analyze/stress`, {
     method: "POST",
     body: form,
   });
@@ -84,16 +85,48 @@ export async function analyzeStress(audioBlob: Blob): Promise<AnalysisResults> {
   };
 }
 
-/** Fetch biomarker summary report for any completed session. */
+/** Upload audio blob to the acoustic features endpoint. */
+export async function analyzeAcoustics(audioBlob: Blob): Promise<{
+  f0_mean: number;
+  f0_std: number;
+  jitter: number;
+  shimmer_db: number;
+  hnr: number;
+  loudness_mean: number;
+  loudness_std: number;
+  speaking_rate: number;
+  voiced_segments_per_sec: number;
+  mean_pause_length: number;
+  mean_voiced_length: number;
+}> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "recording.webm");
+
+  const res = await fetch(`${BACKEND_URL}/api/analyze/acoustics`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(
+      (err as { detail?: string }).detail || "Acoustic analysis failed",
+    );
+  }
+  return res.json();
+}
+
+/** Fetch session report for any completed session. */
 export async function fetchSessionSummary(payload: {
   segment: string;
   user_transcription: string;
   ai_transcription: string;
   duration_seconds: number;
   detected_phonemes?: string[];
-  detected_dys_detect?: string[];
+  detected_dys_detect?: DysfluencyEntry[];
+  acoustic_features?: Record<string, number> | null;
 }): Promise<SummaryReport> {
-  const res = await fetch("/api/session-summary", {
+  const res = await fetch(`${BACKEND_URL}/api/session-summary`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -114,7 +147,7 @@ export async function fetchSummaryChatReply(
   report: SummaryReport,
   message: string,
 ): Promise<string> {
-  const res = await fetch("/api/session-summary/chat", {
+  const res = await fetch(`${BACKEND_URL}/api/session-summary/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ report, message }),

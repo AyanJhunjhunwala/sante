@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker images:*)"
+      "Bash(docker images:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

@@ -32,10 +32,25 @@ export interface AnalysisResults {
 }
 
 // Session summary report (from /api/session-summary)
-export interface SummaryMetric {
-  name: string;
-  score: number;
-  confidence: number;
+export interface DysfluencyEntry {
+  dysfluency_type: string;
+  phoneme: string;
+  start_state: number;
+  end_state: number;
+}
+
+export interface AcousticFeatures {
+  f0_mean: number;
+  f0_std: number;
+  jitter: number;
+  shimmer_db: number;
+  hnr: number;
+  loudness_mean: number;
+  loudness_std: number;
+  speaking_rate: number;
+  voiced_segments_per_sec: number;
+  mean_pause_length: number;
+  mean_voiced_length: number;
 }
 
 export interface SummaryReport {
@@ -43,26 +58,13 @@ export interface SummaryReport {
   created_at: string;
   segment: string;
   duration_seconds: number;
-  provenance: Record<string, unknown>;
-  executive_summary: {
-    accent_prediction: string;
-    accent_confidence: number;
-    top_flags: { label: string; score: number; confidence: number }[];
-  };
   content: {
-    phonemes: string[];
-    dys_detect: string[];
-    phonemes_source: "runpod" | "dummy";
     user_transcription: string;
     ai_transcription: string;
-    stress_binary: string;
+    phonemes: string[];
+    dys_detect: DysfluencyEntry[];
+    acoustic_features: AcousticFeatures | null;
   };
-  speaker_traits: {
-    age_range_estimate: string;
-    gender_probabilities: { female: number; male: number };
-  };
-  metrics: SummaryMetric[];
-  ai_summary: string;
 }
 
 // WebSocket server → client message union
