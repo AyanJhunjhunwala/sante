@@ -3,10 +3,12 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+
+from agents.stress_detector import analyze_stress
 
 # ---------------------------------------------------------------------------
 # Config
@@ -16,12 +18,12 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # ---------------------------------------------------------------------------
-# System prompts for each analysis segment
+# System prompts for each analysis segment (english-only)
 # ---------------------------------------------------------------------------
 
 PROMPT_SPEECH = """
-You are Santé, a cheerful and knowledgeable AI voice health assistant
-specializing in speech and language pattern analysis.
+You are a cheerful and knowledgeable AI voice health assistant
+specializing in speech and language pattern analysis. You only speak English.
 
 WELCOME: Warmly greet the user and explain that this session focuses on
 speech pattern analysis. Explain that research from institutions like
@@ -51,8 +53,8 @@ in simple terms. Keep responses concise — this is voice, not text.
 """.strip()
 
 PROMPT_HEALTH = """
-You are Santé, a cheerful and knowledgeable AI voice health assistant
-specializing in general health monitoring through voice biomarkers.
+You are a cheerful and knowledgeable AI voice health assistant
+specializing in general health monitoring through voice biomarkers. You only speak English.
 
 WELCOME: Warmly greet the user and explain this session monitors general
 health indicators through their voice. Explain that research from the
@@ -87,40 +89,18 @@ PERSONALITY: Warm, encouraging, genuinely curious. Keep it conversational.
 """.strip()
 
 PROMPT_STRESS = """
-You are Santé, a cheerful and empathetic AI voice health assistant
-specializing in stress and mental wellness assessment through voice.
+You are a friendly AI voice health assistant. You only speak English.
+Keep every response to 1-2 short sentences.
 
-WELCOME: Warmly greet the user and explain this session checks in on
-their stress levels and emotional wellbeing through their voice. Explain
-that NIH-funded research has shown that speech patterns, tone, word
-choice, and even pauses change measurably with depression, anxiety, and
-stress. Researchers at Emory University and Georgia Tech are using vocal
-and facial biomarkers to catch mental health changes early.
-
-SESSION FLOW — guide the user through these naturally:
-1. Start with a simple check-in: "How are you feeling right now, in this
-   moment?" Let them speak freely (captures baseline mood in voice).
-2. Ask them to describe their sleep last night — how long, quality, any
-   trouble falling or staying asleep (sleep discussion reveals fatigue
-   markers in voice).
-3. Ask them to describe the most stressful part of their week (captures
-   stress vocal signatures — pitch variability, speaking rate, filled
-   pauses like "um" and "uh").
-4. Ask them to describe something they're looking forward to or grateful
-   for (positive emotional contrast — researchers compare positive vs
-   negative speech patterns).
-5. Guide a brief breathing exercise: breathe in for 4 counts, hold for
-   4, out for 6. Then ask how they feel after (captures voice change
-   after relaxation).
-6. Ask them to rate their stress on a scale of 1-10 and explain why
-   they chose that number (self-report combined with voice data).
-
-After each section, provide warm, validating feedback. Normalize stress.
-Do NOT diagnose depression or anxiety — frame as "patterns worth
-discussing with a professional if you're concerned."
-
-PERSONALITY: Especially gentle, empathetic, and affirming. This is the
-most emotionally sensitive session. Be a supportive listener.
+Your ONLY job:
+1. Say "Hi! I'm going to run a quick stress check on your voice.
+   Just talk to me naturally for about 30 seconds — tell me about
+   your day, how you're feeling, anything on your mind. I'm listening!"
+2. While the user talks, respond with very brief encouragements like
+   "Mhm", "Go on", "I see", or short follow-up questions to keep
+   them talking naturally.
+3. Do NOT explain the science. Do NOT diagnose. Do NOT give long replies.
+   Just keep the conversation flowing so we capture enough voice data.
 """.strip()
 
 SEGMENTS = {
@@ -163,6 +143,22 @@ async def get_ephemeral_token(segment: str):
     if not instructions:
         raise HTTPException(status_code=400, detail=f"Unknown segment: {segment}")
 
+    session_config = {
+        "type": "realtime",
+        "model": "gpt-realtime",
+        "instructions": instructions,
+        "audio": {
+            "input": {
+                "transcription": {
+                    "model": "gpt-4o-mini-transcribe",
+                },
+            },
+            "output": {
+                "voice": "shimmer",
+            },
+        },
+    }
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             "https://api.openai.com/v1/realtime/client_secrets",
@@ -170,19 +166,22 @@ async def get_ephemeral_token(segment: str):
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
-            json={
-                "session": {
-                    "type": "realtime",
-                    "model": "gpt-realtime",
-                    "instructions": instructions,
-                    "audio": {
-                        "output": {
-                            "voice": "shimmer",
-                        },
-                    },
-                },
-            },
+            json={"session": session_config},
         )
+
+    # If the nested transcription param was rejected, retry without it
+    if resp.status_code != 200 and "transcription" in resp.text:
+        print(f"Transcription config rejected, retrying without it: {resp.text}")
+        del session_config["audio"]["input"]
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"session": session_config},
+            )
 
     if resp.status_code != 200:
         print(f"OpenAI token error {resp.status_code}: {resp.text}")
@@ -192,6 +191,29 @@ async def get_ephemeral_token(segment: str):
         )
 
     return JSONResponse(resp.json())
+
+
+# ---------------------------------------------------------------------------
+# Voice analysis endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/analyze/stress")
+async def api_analyze_stress(audio: UploadFile = File(...)):
+    """
+    Receive recorded audio from the stress session and run it through
+    the RunPod stress-detector model.
+    """
+    audio_bytes = await audio.read()
+
+    if len(audio_bytes) < 1000:
+        raise HTTPException(status_code=400, detail="Audio too short")
+
+    result = await analyze_stress(audio_bytes)
+
+    if "error" in result:
+        raise HTTPException(status_code=502, detail=result["error"])
+
+    return JSONResponse(result)
 
 
 # ---------------------------------------------------------------------------
