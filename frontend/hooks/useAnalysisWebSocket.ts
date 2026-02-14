@@ -24,8 +24,12 @@ export function useAnalysisWebSocket() {
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data) as WSServerMessage;
-          const { updateWaveform, updateStressScore, updateSpeechMetrics } =
-            store.getState();
+          const {
+            updateWaveform,
+            updateStressScore,
+            updateSpeechMetrics,
+            updatePhonemes,
+          } = store.getState();
 
           switch (msg.type) {
             case "waveform":
@@ -36,6 +40,18 @@ export function useAnalysisWebSocket() {
               break;
             case "speech_metrics":
               updateSpeechMetrics(msg.disfluency, msg.pacing, msg.wpm);
+              break;
+            case "phonemes":
+              updatePhonemes(
+                msg.ref_phonemes,
+                // decode_phonemes arrives as plain strings from the model;
+                // normalise to PhonemeToken shape using dys_detect labels
+                msg.decode_phonemes.map((p, i) => ({
+                  phoneme: p,
+                  dys_label: msg.dys_detect[i] ?? "normal",
+                })),
+                msg.dys_detect,
+              );
               break;
             case "error":
               console.warn("[Santé WS] server error:", msg.message);

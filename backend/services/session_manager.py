@@ -6,6 +6,7 @@ Stores audio buffer, transcript, and metadata per session.
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -26,7 +27,11 @@ class SessionState:
     segment: str
     websocket: "WebSocket"
     audio_buffer: bytearray = field(default_factory=bytearray)
+    # Rolling window of the last 6 raw chunks (~3 s) for phoneme analysis
+    phoneme_chunk_buffer: deque = field(default_factory=lambda: deque(maxlen=6))
     transcript: list[TranscriptEntry] = field(default_factory=list)
+    # Latest user transcript text — used as ref_text for the phoneme model
+    latest_user_transcript: str = ""
     chunk_count: int = 0
     created_at: float = field(default_factory=time.time)
 
@@ -48,11 +53,12 @@ class SessionManager:
         return self._sessions.get(session_id)
 
     def append_audio(self, session_id: str, chunk: bytes) -> int:
-        """Append audio chunk and return the new chunk count."""
+        """Append audio chunk, update rolling buffer, return new chunk count."""
         session = self._sessions.get(session_id)
         if session is None:
             return 0
         session.audio_buffer.extend(chunk)
+        session.phoneme_chunk_buffer.append(chunk)
         session.chunk_count += 1
         return session.chunk_count
 
@@ -61,6 +67,22 @@ class SessionManager:
         if session is None:
             return
         session.transcript.append(TranscriptEntry(role=role, text=text))
+        # Track latest user speech for phoneme ref_text
+        if role == "user" and text.strip():
+            session.latest_user_transcript = text.strip()
+
+    def get_phoneme_audio(self, session_id: str) -> bytes:
+        """Return joined bytes from the rolling phoneme chunk buffer (~3 s)."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return b""
+        return b"".join(session.phoneme_chunk_buffer)
+
+    def get_latest_user_transcript(self, session_id: str) -> str:
+        session = self._sessions.get(session_id)
+        if session is None:
+            return ""
+        return session.latest_user_transcript
 
     def get_summary(self, session_id: str) -> dict:
         session = self._sessions.get(session_id)

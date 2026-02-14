@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import type {
   AnalysisResults,
+  PhonemeFrame,
+  PhonemeToken,
   Segment,
   SpeechMetrics,
   StressScore,
@@ -38,6 +40,7 @@ export interface SessionState {
   waveformData: number[];
   stressScore: StressScore | null;
   speechMetrics: SpeechMetrics | null;
+  phonemeFrame: PhonemeFrame | null;
 
   // Post-session results
   analysisResults: AnalysisResults | null;
@@ -79,6 +82,11 @@ export interface SessionActions {
     isEstimate: boolean,
   ) => void;
   updateSpeechMetrics: (d: number, pacing: number, wpm: number | null) => void;
+  updatePhonemes: (
+    refPhonemes: string[],
+    decodePhonemes: PhonemeToken[],
+    dysDetect: string[],
+  ) => void;
 
   // Post-session results
   setResultsLoading: () => void;
@@ -105,6 +113,7 @@ const initialState: SessionState = {
   waveformData: [],
   stressScore: null,
   speechMetrics: null,
+  phonemeFrame: null,
   analysisResults: null,
   summaryReport: null,
   resultsStatus: "idle",
@@ -224,6 +233,16 @@ export const useSessionStore = create<SessionState & SessionActions>()(
       updateSpeechMetrics: (disfluency, pacing, wpm) =>
         set({
           speechMetrics: { disfluency, pacing, wpm, updatedAt: Date.now() },
+        }),
+
+      updatePhonemes: (refPhonemes, decodePhonemes, dysDetect) =>
+        set({
+          phonemeFrame: {
+            ref_phonemes: refPhonemes,
+            decode_phonemes: decodePhonemes,
+            dys_detect: dysDetect,
+            updatedAt: Date.now(),
+          },
         }),
 
       setResultsLoading: () =>

@@ -17,6 +17,10 @@ import math
 # ---------------------------------------------------------------------------
 
 
+# Trigger phoneme analysis every N chunks (~3 s at 500ms/chunk)
+PHONEME_CHUNK_INTERVAL = 6
+
+
 async def analyze_chunk(chunk: bytes, chunk_count: int, segment: str) -> list[dict]:
     """
     Process a raw audio chunk (audio/webm;codecs=opus binary from MediaRecorder).
@@ -25,6 +29,7 @@ async def analyze_chunk(chunk: bytes, chunk_count: int, segment: str) -> list[di
     - waveform frame (every chunk)
     - stress_score frame (every 3 chunks)
     - speech_metrics frame (every 4 chunks)
+    - _phoneme_trigger internal signal (every 6 chunks, NOT sent to client)
     """
     frames: list[dict] = []
 
@@ -43,6 +48,12 @@ async def analyze_chunk(chunk: bytes, chunk_count: int, segment: str) -> list[di
     if chunk_count % 4 == 0:
         metrics_frame = _compute_speech_metrics(energy_values, chunk_count)
         frames.append(metrics_frame)
+
+    # Every 6 chunks (~3 s) signal that phoneme analysis should be triggered.
+    # This frame is internal only — the WS router handles it and does NOT send
+    # it to the client.
+    if chunk_count % PHONEME_CHUNK_INTERVAL == 0:
+        frames.append({"type": "_phoneme_trigger"})
 
     return frames
 
