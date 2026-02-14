@@ -55,6 +55,7 @@ let turnSequence = 0;
 // Audio recording state (for stress analysis)
 let mediaRecorder = null;
 let recordedChunks = [];
+let recStream = null; // separate clone so cleanup doesn't kill it
 
 // -----------------------------------------------------------------------
 // Landing: segment card click handlers
@@ -92,10 +93,16 @@ function showSession(segment) {
 
 function setActive() {
   btnContainer.classList.add("active");
-  sessionStatus.textContent = "Session active — speak naturally";
-  sessionStatus.classList.add("active");
   sessionControls.classList.add("visible");
   transcriptArea.classList.add("visible");
+
+  if (currentSegment === "stress") {
+    sessionStatus.textContent = "Recording — speak naturally, click End Test when done";
+    sessionStatus.classList.add("active");
+  } else {
+    sessionStatus.textContent = "Session active — speak naturally";
+    sessionStatus.classList.add("active");
+  }
 }
 
 // -----------------------------------------------------------------------
@@ -151,14 +158,10 @@ function newTurn(role, text, status = "final") {
 
 function renderConversationLog() {
   transcriptScroll.innerHTML = "";
-  let rendered = 0;
-
   conversationLog.forEach((turn) => {
     if (!turn.text) return;
     addTranscriptEntry(turn.role === "user" ? "You" : "Santé", turn.text);
-    rendered++;
   });
-
   transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
 }
 
@@ -174,38 +177,80 @@ function resetConversationLog() {
 function startRecording(stream) {
   recordedChunks = [];
 
-  // Clone the stream so recording is independent of mute state
-  const recStream = stream.clone();
+  // Clone so we have an independent stream (unaffected by mute / cleanup)
+  recStream = stream.clone();
 
   const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
     ? "audio/webm;codecs=opus"
     : "audio/webm";
 
-  mediaRecorder = new MediaRecorder(recStream, { mimeType });
+  try {
+    mediaRecorder = new MediaRecorder(recStream, { mimeType });
+  } catch (err) {
+    console.error("[Santé] MediaRecorder init failed:", err);
+    mediaRecorder = null;
+    return;
+  }
 
   mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) recordedChunks.push(e.data);
+    if (e.data && e.data.size > 0) {
+      recordedChunks.push(e.data);
+      console.log(`[Santé] Recorded chunk: ${e.data.size} bytes (total chunks: ${recordedChunks.length})`);
+    }
   };
 
-  mediaRecorder.start(1000); // collect in 1s chunks
-  console.log("[Santé] Recording started for analysis");
+  mediaRecorder.onerror = (e) => {
+    console.error("[Santé] MediaRecorder error:", e);
+  };
+
+  mediaRecorder.start(500); // collect every 500ms
+  console.log("[Santé] MediaRecorder started, mimeType:", mimeType, "state:", mediaRecorder.state);
 }
 
 function stopRecording() {
   return new Promise((resolve) => {
-    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+    if (!mediaRecorder) {
+      console.warn("[Santé] stopRecording: no mediaRecorder");
       resolve(null);
       return;
     }
 
+    if (mediaRecorder.state === "inactive") {
+      console.warn("[Santé] stopRecording: recorder already inactive, chunks:", recordedChunks.length);
+      if (recordedChunks.length > 0) {
+        const blob = new Blob(recordedChunks, { type: "audio/webm" });
+        recordedChunks = [];
+        mediaRecorder = null;
+        resolve(blob);
+      } else {
+        mediaRecorder = null;
+        resolve(null);
+      }
+      return;
+    }
+
+    const mimeType = mediaRecorder.mimeType || "audio/webm";
+
     mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
-      console.log(`[Santé] Recording stopped — ${blob.size} bytes`);
-      mediaRecorder = null;
+      console.log(`[Santé] MediaRecorder stopped. Chunks: ${recordedChunks.length}`);
+      if (recordedChunks.length === 0) {
+        mediaRecorder = null;
+        resolve(null);
+        return;
+      }
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      console.log(`[Santé] Created audio blob: ${blob.size} bytes, type: ${blob.type}`);
       recordedChunks = [];
+      mediaRecorder = null;
+      // Stop the cloned stream tracks
+      if (recStream) {
+        recStream.getTracks().forEach((t) => t.stop());
+        recStream = null;
+      }
       resolve(blob);
     };
 
+    console.log("[Santé] Stopping MediaRecorder, current state:", mediaRecorder.state);
     mediaRecorder.stop();
   });
 }
@@ -241,7 +286,7 @@ async function startSession(segment) {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     pc.addTrack(localStream.getTracks()[0]);
 
-    // Start recording the mic audio for the stress segment
+    // Start recording the mic for stress analysis
     if (segment === "stress") {
       startRecording(localStream);
     }
@@ -404,14 +449,19 @@ function toggleMute() {
 async function endSession() {
   const segment = currentSegment;
 
-  // Stop recording and grab the audio blob (for stress)
-  const audioBlob = await stopRecording();
+  // Stop recording BEFORE cleanup (cleanup kills the original stream)
+  let audioBlob = null;
+  if (segment === "stress") {
+    console.log("[Santé] Stopping recording for stress analysis...");
+    audioBlob = await stopRecording();
+    console.log("[Santé] Audio blob:", audioBlob ? `${audioBlob.size} bytes` : "null");
+  }
 
   cleanup();
   state = "idle";
 
-  // If this was a stress session and we have audio, run analysis
-  if (segment === "stress" && audioBlob && audioBlob.size > 1000) {
+  // If stress session with valid audio, show results overlay and analyze
+  if (segment === "stress" && audioBlob && audioBlob.size > 500) {
     showResultsOverlay();
     runStressAnalysis(audioBlob);
   } else {
@@ -445,6 +495,8 @@ function closeResults() {
 
 async function runStressAnalysis(audioBlob) {
   try {
+    console.log(`[Santé] Uploading ${audioBlob.size} bytes to /api/analyze/stress`);
+
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
 
@@ -453,12 +505,15 @@ async function runStressAnalysis(audioBlob) {
       body: formData,
     });
 
+    console.log("[Santé] Analysis response status:", resp.status);
+
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(errData.detail || "Analysis failed");
     }
 
     const data = await resp.json();
+    console.log("[Santé] Analysis result:", data);
     showResults(data);
   } catch (err) {
     console.error("[Santé] Stress analysis error:", err);
