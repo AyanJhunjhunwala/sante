@@ -12,6 +12,7 @@ const shLabel = document.getElementById("sh-label");
 const btnContainer = document.getElementById("btn-container");
 const orbLabel = document.getElementById("orb-label");
 const sessionStatus = document.getElementById("session-status");
+const sessionCountdown = document.getElementById("session-countdown");
 const sessionControls = document.getElementById("session-controls");
 const muteBtn = document.getElementById("mute-btn");
 const muteLabel = document.getElementById("mute-label");
@@ -41,6 +42,13 @@ const SEGMENT_LABELS = {
   stress: "Stress & Wellness",
 };
 
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 // --- State ---
 let state = "idle"; // idle | connecting | active
 let currentSegment = null;
@@ -53,6 +61,11 @@ let aiSpeaking = false;
 let userMutedBeforeAI = false; // remember if user was manually muted
 let conversationLog = [];
 let turnSequence = 0;
+const SESSION_MAX_DURATION_MS = 60_000;
+let sessionTimerTimeoutId = null;
+let sessionTimerIntervalId = null;
+let sessionDeadline = 0;
+let isEndingSession = false;
 
 // Audio recording state (for stress analysis)
 let mediaRecorder = null;
@@ -97,6 +110,7 @@ function setActive() {
   btnContainer.classList.add("active");
   sessionControls.classList.add("visible");
   transcriptArea.classList.add("visible");
+  startSessionTimer();
 
   if (currentSegment === "stress") {
     sessionStatus.textContent = "Recording — speak naturally, click End Test when done";
@@ -225,6 +239,48 @@ function resetConversationLog() {
   conversationLog = [];
   turnSequence = 0;
   renderConversationLog();
+}
+
+function updateSessionTimerVisual() {
+  if (!sessionDeadline) {
+    btnContainer.style.setProperty("--session-progress", "1");
+    if (sessionCountdown) sessionCountdown.textContent = formatRemainingTime(SESSION_MAX_DURATION_MS);
+    return;
+  }
+
+  const remainingMs = Math.max(0, sessionDeadline - Date.now());
+  const progress = remainingMs / SESSION_MAX_DURATION_MS;
+  btnContainer.style.setProperty("--session-progress", String(progress));
+  if (sessionCountdown) sessionCountdown.textContent = formatRemainingTime(remainingMs);
+}
+
+function clearSessionTimer() {
+  if (sessionTimerTimeoutId) {
+    clearTimeout(sessionTimerTimeoutId);
+    sessionTimerTimeoutId = null;
+  }
+  if (sessionTimerIntervalId) {
+    clearInterval(sessionTimerIntervalId);
+    sessionTimerIntervalId = null;
+  }
+
+  sessionDeadline = 0;
+  btnContainer.classList.remove("timed-session");
+  btnContainer.style.setProperty("--session-progress", "1");
+  if (sessionCountdown) sessionCountdown.textContent = formatRemainingTime(SESSION_MAX_DURATION_MS);
+}
+
+function startSessionTimer() {
+  clearSessionTimer();
+  sessionDeadline = Date.now() + SESSION_MAX_DURATION_MS;
+  btnContainer.classList.add("timed-session");
+  updateSessionTimerVisual();
+
+  sessionTimerIntervalId = setInterval(updateSessionTimerVisual, 100);
+  sessionTimerTimeoutId = setTimeout(async () => {
+    sessionStatus.textContent = "Session complete — ending...";
+    await endSession();
+  }, SESSION_MAX_DURATION_MS);
 }
 
 // -----------------------------------------------------------------------
@@ -523,6 +579,10 @@ function toggleMute() {
 }
 
 async function endSession() {
+  if (isEndingSession) return;
+  isEndingSession = true;
+  clearSessionTimer();
+
   const segment = currentSegment;
 
   // Stop recording BEFORE cleanup (cleanup kills the original stream)
@@ -543,15 +603,19 @@ async function endSession() {
   } else {
     showLanding();
   }
+
+  isEndingSession = false;
 }
 
 function cleanup() {
+  clearSessionTimer();
   if (dc) { dc.close(); dc = null; }
   if (pc) { pc.close(); pc = null; }
   if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
   if (audioEl) { audioEl.srcObject = null; audioEl = null; }
   aiSpeaking = false;
   userMutedBeforeAI = false;
+  isEndingSession = false;
   resetConversationLog();
 }
 
