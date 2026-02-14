@@ -119,14 +119,18 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
         raise HTTPException(status_code=400, detail=f"Unknown segment: {segment}")
 
     session_config = {
-        "model": "gpt-4o-realtime-preview",
+        "type": "realtime",
+        "model": "gpt-realtime",
         "instructions": instructions,
-        "voice": "shimmer",
-        "input_audio_transcription": {
-            "model": "whisper-1",
-        },
-        "turn_detection": {
-            "type": "server_vad",
+        "audio": {
+            "input": {
+                "transcription": {
+                    "model": "gpt-4o-mini-transcribe",
+                },
+            },
+            "output": {
+                "voice": "shimmer",
+            },
         },
     }
 
