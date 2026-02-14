@@ -19,6 +19,22 @@ const stopBtn = document.getElementById("stop-btn");
 const transcriptArea = document.getElementById("transcript-area");
 const transcriptScroll = document.getElementById("transcript-scroll");
 
+// Results overlay refs
+const resultsOverlay = document.getElementById("results-overlay");
+const resultsLoading = document.getElementById("results-loading");
+const resultsContent = document.getElementById("results-content");
+const resultsError = document.getElementById("results-error");
+const resultsIcon = document.getElementById("results-icon");
+const resultsPrediction = document.getElementById("results-prediction");
+const resultsConfidence = document.getElementById("results-confidence");
+const barCalm = document.getElementById("bar-calm");
+const barStress = document.getElementById("bar-stress");
+const valCalm = document.getElementById("val-calm");
+const valStress = document.getElementById("val-stress");
+const resultsErrorText = document.getElementById("results-error-text");
+const resultsCloseBtn = document.getElementById("results-close-btn");
+const resultsErrorClose = document.getElementById("results-error-close");
+
 const SEGMENT_LABELS = {
   speech: "Speech Patterns",
   health: "General Health",
@@ -36,6 +52,10 @@ let isMuted = false;
 let conversationLog = [];
 let turnSequence = 0;
 
+// Audio recording state (for stress analysis)
+let mediaRecorder = null;
+let recordedChunks = [];
+
 // -----------------------------------------------------------------------
 // Landing: segment card click handlers
 // -----------------------------------------------------------------------
@@ -45,6 +65,10 @@ document.querySelectorAll(".segment-card").forEach((card) => {
     if (seg) startSession(seg);
   });
 });
+
+// Results overlay close buttons
+resultsCloseBtn.addEventListener("click", closeResults);
+resultsErrorClose.addEventListener("click", closeResults);
 
 // -----------------------------------------------------------------------
 // UI transitions
@@ -136,13 +160,54 @@ function renderConversationLog() {
   });
 
   transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
-  console.log("[Santé] Rendered", rendered, "turns, children:", transcriptScroll.children.length, "area visible:", transcriptArea.classList.contains("visible"));
 }
 
 function resetConversationLog() {
   conversationLog = [];
   turnSequence = 0;
   renderConversationLog();
+}
+
+// -----------------------------------------------------------------------
+// Audio recording (captures user mic for backend analysis)
+// -----------------------------------------------------------------------
+function startRecording(stream) {
+  recordedChunks = [];
+
+  // Clone the stream so recording is independent of mute state
+  const recStream = stream.clone();
+
+  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : "audio/webm";
+
+  mediaRecorder = new MediaRecorder(recStream, { mimeType });
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.start(1000); // collect in 1s chunks
+  console.log("[Santé] Recording started for analysis");
+}
+
+function stopRecording() {
+  return new Promise((resolve) => {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+      resolve(null);
+      return;
+    }
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
+      console.log(`[Santé] Recording stopped — ${blob.size} bytes`);
+      mediaRecorder = null;
+      recordedChunks = [];
+      resolve(blob);
+    };
+
+    mediaRecorder.stop();
+  });
 }
 
 // -----------------------------------------------------------------------
@@ -175,6 +240,11 @@ async function startSession(segment) {
 
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     pc.addTrack(localStream.getTracks()[0]);
+
+    // Start recording the mic audio for the stress segment
+    if (segment === "stress") {
+      startRecording(localStream);
+    }
 
     dc = pc.createDataChannel("oai-events");
     dc.addEventListener("open", onDCOpen);
@@ -225,7 +295,6 @@ function onDCMessage(e) {
 // Realtime events
 // -----------------------------------------------------------------------
 function extractUserTranscript(ev) {
-  // Field location varies by API version — check all known shapes
   if (typeof ev.transcript === "string") return ev.transcript;
   if (ev.content_part?.transcript) return ev.content_part.transcript;
   if (Array.isArray(ev.content)) {
@@ -239,18 +308,14 @@ function extractUserTranscript(ev) {
 
 function appendUserTurn(text) {
   const userText = (text || "").trim();
-  console.log("[Santé] appendUserTurn called, text:", JSON.stringify(userText), "log length:", conversationLog.length);
   if (!userText) return;
 
-  // Dedup: skip if last user turn has identical text
   const lastTurn = conversationLog[conversationLog.length - 1];
   if (lastTurn && lastTurn.role === "user" && lastTurn.status === "final" && lastTurn.text === userText) {
-    console.log("[Santé] Skipped duplicate user turn");
     return;
   }
 
   conversationLog.push(newTurn("user", userText, "final"));
-  console.log("[Santé] User turn added. Full log:", conversationLog.map(t => `${t.role}:${t.text.slice(0,30)}`));
   renderConversationLog();
 }
 
@@ -287,7 +352,6 @@ function handleEvent(ev) {
 
     // ── User transcript ──
     case "conversation.item.input_audio_transcription.completed":
-      console.log("[Santé] User transcription completed:", ev);
       appendUserTurn(extractUserTranscript(ev));
       break;
 
@@ -295,7 +359,6 @@ function handleEvent(ev) {
       console.warn("[Santé] User transcription FAILED:", ev.error || ev);
       break;
 
-    // ── Fallback: extract user text from conversation.item.done ──
     case "conversation.item.done":
       {
         const item = ev.item;
@@ -303,7 +366,6 @@ function handleEvent(ev) {
           for (const part of item.content) {
             const t = part.transcript || part.text || "";
             if (t.trim()) {
-              console.log("[Santé] User text from item.done:", t);
               appendUserTurn(t);
               break;
             }
@@ -312,13 +374,12 @@ function handleEvent(ev) {
       }
       break;
 
-    // ── Session lifecycle ──
     case "session.created":
       console.log("[Santé] Session created:", ev.session?.id);
       break;
 
     case "session.updated":
-      console.log("[Santé] Session config accepted:", ev.session?.input_audio_transcription);
+      console.log("[Santé] Session config accepted");
       break;
 
     case "error":
@@ -340,10 +401,22 @@ function toggleMute() {
   updateMuteUI();
 }
 
-function endSession() {
+async function endSession() {
+  const segment = currentSegment;
+
+  // Stop recording and grab the audio blob (for stress)
+  const audioBlob = await stopRecording();
+
   cleanup();
   state = "idle";
-  showLanding();
+
+  // If this was a stress session and we have audio, run analysis
+  if (segment === "stress" && audioBlob && audioBlob.size > 1000) {
+    showResultsOverlay();
+    runStressAnalysis(audioBlob);
+  } else {
+    showLanding();
+  }
 }
 
 function cleanup() {
@@ -352,6 +425,87 @@ function cleanup() {
   if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
   if (audioEl) { audioEl.srcObject = null; audioEl = null; }
   resetConversationLog();
+}
+
+// -----------------------------------------------------------------------
+// Results overlay
+// -----------------------------------------------------------------------
+function showResultsOverlay() {
+  sessionView.classList.remove("active");
+  resultsLoading.style.display = "";
+  resultsContent.style.display = "none";
+  resultsError.style.display = "none";
+  resultsOverlay.classList.add("visible");
+}
+
+function closeResults() {
+  resultsOverlay.classList.remove("visible");
+  showLanding();
+}
+
+async function runStressAnalysis(audioBlob) {
+  try {
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "recording.webm");
+
+    const resp = await fetch("/api/analyze/stress", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(errData.detail || "Analysis failed");
+    }
+
+    const data = await resp.json();
+    showResults(data);
+  } catch (err) {
+    console.error("[Santé] Stress analysis error:", err);
+    showResultsError(err.message || "Analysis failed. Please try again.");
+  }
+}
+
+function showResults(data) {
+  resultsLoading.style.display = "none";
+  resultsError.style.display = "none";
+  resultsContent.style.display = "";
+
+  const isStressed = data.prediction === "STRESSED";
+
+  // Icon
+  resultsIcon.className = `results-icon ${isStressed ? "stressed" : "calm"}`;
+  resultsIcon.innerHTML = isStressed
+    ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    : '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+  // Text
+  resultsPrediction.textContent = isStressed ? "Stressed" : "Not Stressed";
+  resultsPrediction.style.color = isStressed ? "var(--red)" : "var(--emerald)";
+  resultsConfidence.textContent = `${data.confidence.toFixed(1)}% confidence`;
+
+  // Bars (animate after a short delay)
+  const calmPct = (data.not_stressed || 0).toFixed(1);
+  const stressPct = (data.stressed || 0).toFixed(1);
+
+  barCalm.style.width = "0%";
+  barStress.style.width = "0%";
+  valCalm.textContent = `${calmPct}%`;
+  valStress.textContent = `${stressPct}%`;
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      barCalm.style.width = `${calmPct}%`;
+      barStress.style.width = `${stressPct}%`;
+    }, 100);
+  });
+}
+
+function showResultsError(message) {
+  resultsLoading.style.display = "none";
+  resultsContent.style.display = "none";
+  resultsError.style.display = "";
+  resultsErrorText.textContent = message;
 }
 
 // -----------------------------------------------------------------------

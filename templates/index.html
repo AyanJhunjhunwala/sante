@@ -165,6 +165,54 @@
 
   </div>
 
+  <!-- ===== RESULTS OVERLAY (shown after analysis completes) ===== -->
+  <div class="results-overlay" id="results-overlay">
+    <div class="results-card" id="results-card">
+
+      <!-- Loading state -->
+      <div class="results-loading" id="results-loading">
+        <div class="results-spinner"></div>
+        <p class="results-loading-text">Analyzing your voice...</p>
+        <p class="results-loading-sub">Running stress detection model</p>
+      </div>
+
+      <!-- Results state -->
+      <div class="results-content" id="results-content" style="display:none">
+        <div class="results-icon" id="results-icon"></div>
+        <h2 class="results-prediction" id="results-prediction"></h2>
+        <p class="results-confidence" id="results-confidence"></p>
+
+        <div class="results-bars">
+          <div class="results-bar-row">
+            <span class="bar-label">Not Stressed</span>
+            <div class="bar-track">
+              <div class="bar-fill bar-fill-calm" id="bar-calm" style="width:0%"></div>
+            </div>
+            <span class="bar-value" id="val-calm">0%</span>
+          </div>
+          <div class="results-bar-row">
+            <span class="bar-label">Stressed</span>
+            <div class="bar-track">
+              <div class="bar-fill bar-fill-stress" id="bar-stress" style="width:0%"></div>
+            </div>
+            <span class="bar-value" id="val-stress">0%</span>
+          </div>
+        </div>
+
+        <p class="results-disclaimer">This is a research tool, not a medical diagnosis. Consult a professional for clinical assessments.</p>
+
+        <button class="results-close-btn" id="results-close-btn">Back to Home</button>
+      </div>
+
+      <!-- Error state -->
+      <div class="results-error" id="results-error" style="display:none">
+        <p class="results-error-text" id="results-error-text"></p>
+        <button class="results-close-btn" id="results-error-close">Back to Home</button>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 
 <script src="/static/js/app.js"></script>

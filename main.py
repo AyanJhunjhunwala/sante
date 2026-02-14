@@ -3,10 +3,12 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+
+from agents.stress_detector import analyze_stress
 
 # ---------------------------------------------------------------------------
 # Config
@@ -211,6 +213,29 @@ async def get_ephemeral_token(segment: str):
         )
 
     return JSONResponse(resp.json())
+
+
+# ---------------------------------------------------------------------------
+# Voice analysis endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/analyze/stress")
+async def api_analyze_stress(audio: UploadFile = File(...)):
+    """
+    Receive recorded audio from the stress session and run it through
+    the RunPod stress-detector model.
+    """
+    audio_bytes = await audio.read()
+
+    if len(audio_bytes) < 1000:
+        raise HTTPException(status_code=400, detail="Audio too short")
+
+    result = await analyze_stress(audio_bytes)
+
+    if "error" in result:
+        raise HTTPException(status_code=502, detail=result["error"])
+
+    return JSONResponse(result)
 
 
 # ---------------------------------------------------------------------------
