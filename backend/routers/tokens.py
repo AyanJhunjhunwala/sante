@@ -119,18 +119,14 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
         raise HTTPException(status_code=400, detail=f"Unknown segment: {segment}")
 
     session_config = {
-        "type": "realtime",
-        "model": "gpt-realtime",
+        "model": "gpt-4o-realtime-preview",
         "instructions": instructions,
-        "audio": {
-            "input": {
-                "transcription": {
-                    "model": "gpt-4o-mini-transcribe",
-                },
-            },
-            "output": {
-                "voice": "shimmer",
-            },
+        "voice": "shimmer",
+        "input_audio_transcription": {
+            "model": "whisper-1",
+        },
+        "turn_detection": {
+            "type": "server_vad",
         },
     }
 
@@ -155,7 +151,7 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
             detail=f"Failed to reach OpenAI token service: {exc}",
         ) from exc
 
-    # If the nested transcription param was rejected, retry without it
+    # If transcription param rejected, retry without it
     if resp.status_code != 200 and "transcription" in resp.text:
         print(f"Transcription config rejected, retrying without it: {resp.text}")
         session_config["audio"].pop("input", None)

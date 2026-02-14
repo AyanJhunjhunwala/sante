@@ -20,6 +20,8 @@ export function useWaveform(
     (stream: MediaStream) => {
       const audioCtx = new AudioContext();
       ctxRef.current = audioCtx;
+      // Resume in case browser created it in suspended state
+      audioCtx.resume().catch(() => {});
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 128; // 64 frequency bins
       analyserRef.current = analyser;
