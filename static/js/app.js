@@ -33,8 +33,8 @@ let dc = null;
 let audioEl = null;
 let localStream = null;
 let isMuted = false;
-let aiTranscriptBuffer = "";
-let currentAiEntry = null;
+let conversationLog = [];
+let turnSequence = 0;
 
 // -----------------------------------------------------------------------
 // Landing: segment card click handlers
@@ -63,7 +63,7 @@ function showSession(segment) {
   sessionControls.className = "session-controls";
   btnContainer.className = "btn-container";
   transcriptArea.classList.remove("visible");
-  transcriptScroll.innerHTML = "";
+  resetConversationLog();
 }
 
 function setActive() {
@@ -111,8 +111,35 @@ function addTranscriptEntry(role, text) {
   entry.appendChild(roleEl);
   entry.appendChild(textEl);
   transcriptScroll.appendChild(entry);
-  transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
   return textEl;
+}
+
+function newTurn(role, text, status = "final") {
+  return {
+    id: ++turnSequence,
+    role,
+    text,
+    status,
+    createdAt: Date.now(),
+    segment: currentSegment,
+  };
+}
+
+function renderConversationLog() {
+  transcriptScroll.innerHTML = "";
+
+  conversationLog.forEach((turn) => {
+    if (!turn.text) return;
+    addTranscriptEntry(turn.role === "user" ? "You" : "Santé", turn.text);
+  });
+
+  transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
+}
+
+function resetConversationLog() {
+  conversationLog = [];
+  turnSequence = 0;
+  renderConversationLog();
 }
 
 // -----------------------------------------------------------------------
@@ -123,8 +150,6 @@ async function startSession(segment) {
   state = "connecting";
   isMuted = false;
   updateMuteUI();
-  aiTranscriptBuffer = "";
-  currentAiEntry = null;
   showSession(segment);
 
   try {
@@ -200,22 +225,48 @@ function onDCMessage(e) {
 function handleEvent(ev) {
   switch (ev.type) {
     case "response.output_audio_transcript.delta":
-      if (!currentAiEntry) {
-        aiTranscriptBuffer = "";
-        currentAiEntry = addTranscriptEntry("Santé", "");
+      if (!ev.delta) break;
+      {
+        let currentTurn = conversationLog[conversationLog.length - 1];
+        if (!currentTurn || currentTurn.role !== "assistant" || currentTurn.status !== "draft") {
+          currentTurn = newTurn("assistant", "", "draft");
+          conversationLog.push(currentTurn);
+        }
+        currentTurn.text += ev.delta;
+        renderConversationLog();
       }
-      aiTranscriptBuffer += ev.delta || "";
-      currentAiEntry.textContent = aiTranscriptBuffer;
-      transcriptScroll.scrollTop = transcriptScroll.scrollHeight;
       break;
 
     case "response.output_audio_transcript.done":
-      currentAiEntry = null;
-      aiTranscriptBuffer = "";
+      {
+        for (let i = conversationLog.length - 1; i >= 0; i--) {
+          const turn = conversationLog[i];
+          if (turn.role === "assistant" && turn.status === "draft") {
+            turn.status = "final";
+            break;
+          }
+        }
+        renderConversationLog();
+      }
       break;
 
     case "conversation.item.input_audio_transcription.completed":
-      if (ev.transcript) addTranscriptEntry("You", ev.transcript);
+      {
+        const userText = (ev.transcript || "").trim();
+        if (!userText) break;
+
+        const lastTurn = conversationLog[conversationLog.length - 1];
+        const isDuplicate =
+          lastTurn
+          && lastTurn.role === "user"
+          && lastTurn.status === "final"
+          && lastTurn.text === userText;
+
+        if (!isDuplicate) {
+          conversationLog.push(newTurn("user", userText, "final"));
+          renderConversationLog();
+        }
+      }
       break;
 
     case "session.created":
@@ -249,8 +300,7 @@ function cleanup() {
   if (pc) { pc.close(); pc = null; }
   if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
   if (audioEl) { audioEl.srcObject = null; audioEl = null; }
-  currentAiEntry = null;
-  aiTranscriptBuffer = "";
+  resetConversationLog();
 }
 
 // -----------------------------------------------------------------------
