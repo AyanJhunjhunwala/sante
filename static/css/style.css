@@ -93,9 +93,9 @@ body {
    LANDING PAGE
    ========================================================= */
 .landing {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 0 24px 60px;
+  padding: 0 24px 72px;
   transition: opacity 0.4s ease;
 }
 
@@ -104,7 +104,7 @@ body {
 /* --- Hero --- */
 .hero-section {
   text-align: center;
-  padding: 56px 0 40px;
+  padding: 64px 0 44px;
 }
 
 .hero-h1 {
@@ -118,9 +118,9 @@ body {
 
 .hero-sub {
   font-size: 16px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   line-height: 1.7;
-  max-width: 580px;
+  max-width: 640px;
   margin: 0 auto;
 }
 
@@ -135,107 +135,106 @@ body {
   text-align: center;
 }
 
-/* --- Research cards --- */
+/* --- Research impact block --- */
 .research-section {
   margin-bottom: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 
-.research-grid {
+.impact-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 14px;
+  margin-bottom: 16px;
 }
 
-.research-card {
+.impact-card {
   background: var(--bg-white);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  transition: all 0.3s ease;
+  border-radius: 14px;
+  padding: 18px;
+  text-decoration: none;
+  display: block;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.research-card:hover {
-  border-color: rgba(59, 130, 246, 0.2);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+.impact-card:hover {
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: var(--shadow-sm);
 }
 
-.rc-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--blue-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  color: var(--blue);
-}
-
-.rc-icon svg { width: 20px; height: 20px; }
-
-.rc-title {
-  font-size: 15px;
-  font-weight: 600;
+.impact-number {
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -1px;
   color: var(--text);
+  margin-bottom: 10px;
+}
+
+.impact-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.impact-body {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
   margin-bottom: 8px;
 }
 
-.rc-body {
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.65;
-  margin-bottom: 12px;
-}
-
-.rc-link {
-  font-size: 12px;
+.impact-source {
+  font-size: 10px;
   font-weight: 600;
-  color: var(--blue);
-  text-decoration: none;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
-.rc-link:hover { text-decoration: underline; }
 
 /* --- Segment cards --- */
 .segments-section {
-  margin-bottom: 40px;
+  margin-bottom: 28px;
 }
 
 .segments-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 18px;
 }
 
 .segment-card {
-  background: var(--bg-white);
-  border: 1.5px solid var(--border);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1.5px solid rgba(59, 130, 246, 0.18);
   border-radius: 20px;
-  padding: 28px 24px 24px;
+  padding: 26px 24px 22px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   display: flex;
   flex-direction: column;
   font-family: inherit;
 }
 
 .segment-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
+  border-color: rgba(59, 130, 246, 0.42);
+  box-shadow: 0 12px 32px rgba(59, 130, 246, 0.16);
 }
-
-.segment-card[data-segment="speech"]:hover { border-color: var(--blue); }
-.segment-card[data-segment="health"]:hover { border-color: var(--emerald); }
-.segment-card[data-segment="stress"]:hover { border-color: var(--violet); }
 
 .sc-badge {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  color: var(--text-muted);
-  margin-bottom: 16px;
+  color: var(--blue);
+  margin-bottom: 14px;
 }
 
 .sc-icon {
@@ -250,9 +249,9 @@ body {
 
 .sc-icon svg { width: 24px; height: 24px; }
 
-.sc-icon-speech { background: var(--blue-soft); color: var(--blue); }
-.sc-icon-health { background: var(--emerald-soft); color: var(--emerald); }
-.sc-icon-stress { background: var(--violet-soft); color: var(--violet); }
+.sc-icon-speech,
+.sc-icon-health,
+.sc-icon-stress { background: var(--blue-soft); color: var(--blue); }
 
 .sc-title {
   font-size: 17px;
@@ -265,35 +264,25 @@ body {
   font-size: 13px;
   color: var(--text-muted);
   line-height: 1.6;
-  margin-bottom: 16px;
-  flex: 1;
-}
-
-.sc-tasks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   margin-bottom: 18px;
-}
-
-.sc-task {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--border-light);
-  padding: 3px 10px;
-  border-radius: 20px;
+  flex: 1;
 }
 
 .sc-cta {
   font-size: 13px;
   font-weight: 600;
-  color: var(--blue);
-  transition: color 0.2s;
+  color: #ffffff;
+  background: var(--blue);
+  border-radius: 999px;
+  padding: 8px 14px;
+  width: fit-content;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.segment-card[data-segment="health"] .sc-cta { color: var(--emerald); }
-.segment-card[data-segment="stress"] .sc-cta { color: var(--violet); }
+.segment-card:hover .sc-cta {
+  background: var(--blue-dark);
+  transform: translateX(2px);
+}
 
 /* --- Landing footer --- */
 .landing-footer {
@@ -541,7 +530,7 @@ body {
 
 /* === RESPONSIVE === */
 @media (max-width: 768px) {
-  .research-grid, .segments-grid {
+  .impact-grid, .segments-grid {
     grid-template-columns: 1fr;
     gap: 14px;
   }
@@ -551,6 +540,7 @@ body {
   .hero-section { padding: 36px 0 28px; }
 
   .landing { padding: 0 16px 40px; }
+  .research-section { padding: 18px; }
 }
 
 @media (max-width: 480px) {
