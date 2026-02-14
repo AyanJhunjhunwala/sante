@@ -13,10 +13,12 @@
 
 <div class="app" id="app">
 
-  <!-- ===== TOP BAR ===== -->
-  <header class="topbar">
-    <div class="topbar-brand">
-      <svg class="topbar-icon" viewBox="0 0 24 24" fill="currentColor">
+  <!-- ===== LANDING PAGE (visible when idle) ===== -->
+  <div class="landing" id="landing">
+
+    <!-- Brand logo -->
+    <div class="landing-brand">
+      <svg class="landing-brand-icon" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5
                  2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09
                  3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0
@@ -24,16 +26,19 @@
       </svg>
       <span>Santé</span>
     </div>
-    <div class="topbar-badge">Voice Health Analysis</div>
-  </header>
 
-  <!-- ===== LANDING PAGE (visible when idle) ===== -->
-  <div class="landing" id="landing">
+    <!-- Scribble overlay (edge-to-edge, top of page) -->
+    <div class="scribble" aria-hidden="true">
+      <svg id="scribbleSvg" viewBox="0 0 1800 200" preserveAspectRatio="none">
+        <path id="scribblePath1" fill="none" stroke="var(--scribble-color)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="0.05"/>
+        <path id="scribblePath2" fill="none" stroke="var(--scribble-color)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.09"/>
+        <path id="scribblePath3" fill="none" stroke="var(--scribble-color)" stroke-width="5"  stroke-linecap="round" stroke-linejoin="round" opacity="0.16"/>
+      </svg>
+    </div>
 
     <!-- Hero -->
     <section class="hero-section">
-      <h1 class="hero-h1">Your voice reveals more<br/>than words</h1>
-      <p class="hero-sub">Santé uses AI-powered voice analysis to detect speech patterns linked to neurological health, cardiovascular wellness, and emotional wellbeing — all through a simple conversation.</p>
+      <h1 class="hero-h1">Your voice reveals more than words</h1>
     </section>
 
     <!-- Three analysis segments -->

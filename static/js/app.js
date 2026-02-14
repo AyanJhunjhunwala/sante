@@ -73,6 +73,95 @@ let recordedChunks = [];
 let recStream = null; // separate clone so cleanup doesn't kill it
 
 // -----------------------------------------------------------------------
+// Scribble animation (hero visual — infinite flowing wave)
+// -----------------------------------------------------------------------
+(function initScribble() {
+  const scribbleSvg = document.getElementById("scribbleSvg");
+  if (!scribbleSvg) return;
+
+  const paths = [
+    document.getElementById("scribblePath1"),
+    document.getElementById("scribblePath2"),
+    document.getElementById("scribblePath3"),
+  ];
+
+  const viewW = 1800;
+  const viewH = 200;
+  const N = 60;               // many points for smooth flowing curve
+  const curveTightness = 0.4;
+
+  const css = getComputedStyle(document.documentElement);
+  const SPEED = parseFloat(css.getPropertyValue("--scribble-speed")) || 1;
+  const AMP   = parseFloat(css.getPropertyValue("--scribble-amplitude")) || 8;
+
+  // Three stroke layers at different vertical positions
+  const layers = [
+    { baseY: 85,  waveH: 30, drift: 0.30, path: paths[0] },
+    { baseY: 95,  waveH: 25, drift: 0.22, path: paths[1] },
+    { baseY: 105, waveH: 20, drift: 0.15, path: paths[2] },
+  ];
+
+  // Generate base points for each layer — spanning beyond viewport edges
+  layers.forEach((layer) => {
+    layer.pts = [];
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);
+      const x = -100 + t * (viewW + 200);  // extend past edges
+      layer.pts.push({
+        x,
+        y: layer.baseY,
+        oy: layer.baseY,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+  });
+
+  function catmullRomToBezier(points) {
+    let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i - 1] || points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] || p2;
+      const c1x = p1.x + (p2.x - p0.x) * curveTightness / 6;
+      const c1y = p1.y + (p2.y - p0.y) * curveTightness / 6;
+      const c2x = p2.x - (p3.x - p1.x) * curveTightness / 6;
+      const c2y = p2.y - (p3.y - p1.y) * curveTightness / 6;
+      d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    }
+    return d;
+  }
+
+  let start = performance.now();
+  function animate(now) {
+    const t = ((now - start) / 1000) * SPEED;
+
+    layers.forEach((layer) => {
+      for (let i = 0; i < layer.pts.length; i++) {
+        const p = layer.pts[i];
+        const xN = i / (layer.pts.length - 1);
+
+        // Traveling wave: phase shifts with x so the wave flows horizontally
+        const flow = t * layer.drift * 6;  // horizontal flow speed
+
+        const wiggle =
+          Math.sin(flow + xN * 8.0  + p.phase) * (AMP * 1.0) +
+          Math.sin(flow * 1.7 + xN * 4.0) * (AMP * 0.5)  +
+          Math.sin(t * 0.5 + p.phase * 0.7) * (AMP * 0.25);
+
+        // Gentle large-scale arch across the full width
+        const arch = Math.sin(xN * Math.PI) * layer.waveH;
+
+        p.y = p.oy + arch + wiggle;
+      }
+      layer.path.setAttribute("d", catmullRomToBezier(layer.pts));
+    });
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+})();
+
+// -----------------------------------------------------------------------
 // Landing: segment card click handlers
 // -----------------------------------------------------------------------
 document.querySelectorAll(".segment-card").forEach((card) => {
