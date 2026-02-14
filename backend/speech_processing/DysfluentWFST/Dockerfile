@@ -7,6 +7,8 @@ FROM nvidia/cuda:12.9.0-runtime-ubuntu22.04
 
 WORKDIR /app
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Python 3.11 via deadsnakes PPA + audio libs
 RUN apt-get update && apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
