@@ -96,9 +96,15 @@ export function useWebRTC() {
           break;
         }
 
-        case "error":
-          console.error("[Santé] Realtime error FULL:", JSON.stringify(ev));
+        case "error": {
+          const errCode = (ev.error as { code?: string })?.code;
+          if (errCode === "response_cancel_not_active") {
+            console.debug("[Santé] Cancel ignored — no active response");
+          } else {
+            console.error("[Santé] Realtime error:", JSON.stringify(ev));
+          }
           break;
+        }
 
         default:
           // Log all unhandled events so we can see what OpenAI sends
@@ -118,8 +124,10 @@ export function useWebRTC() {
   }, []);
 
   const bargeIn = useCallback(() => {
-    sendDataChannelMessage({ type: "response.cancel" });
-    const { setAiSpeaking, setMuted } = store.getState();
+    const { aiSpeaking, setAiSpeaking, setMuted } = store.getState();
+    if (aiSpeaking) {
+      sendDataChannelMessage({ type: "response.cancel" });
+    }
     setAiSpeaking(false);
     setMuted(false);
   }, [sendDataChannelMessage, store]);
