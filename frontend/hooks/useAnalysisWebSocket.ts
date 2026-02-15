@@ -36,7 +36,10 @@ export function useAnalysisWebSocket() {
               updateWaveform(msg.data);
               break;
             case "pitch":
-              appendPitch(msg.f0);
+              // Only record pitch when user is unmuted (speaking)
+              if (!store.getState().isMuted) {
+                appendPitch(msg.f0);
+              }
               break;
             case "stress_score":
               updateStressScore(msg.value, msg.confidence, msg.is_estimate);

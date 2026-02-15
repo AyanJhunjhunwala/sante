@@ -4,13 +4,20 @@ import { useSessionStore } from "@/store/sessionStore";
 
 const GRAPH_W = 280;
 const GRAPH_H = 80;
-const WPM_MIN = 0;
 const WPM_MAX = 220;
+const VISIBLE_WINDOW = 30; // seconds of history visible on screen
+const CURSOR_RATIO = 2 / 3; // latest point sits at 2/3 across the graph
 
 function wpmToY(wpm: number): number {
-  const clamped = Math.max(WPM_MIN, Math.min(WPM_MAX, wpm));
+  const clamped = Math.max(0, Math.min(WPM_MAX, wpm));
   const ratio = clamped / WPM_MAX;
   return GRAPH_H - ratio * (GRAPH_H - 8) - 4;
+}
+
+function getSpeedLabel(wpm: number): { label: string; color: string; bg: string } {
+  if (wpm < 100) return { label: "Slow", color: "#d97706", bg: "rgba(217,119,6,0.08)" };
+  if (wpm <= 160) return { label: "Normal", color: "var(--emerald)", bg: "var(--emerald-soft)" };
+  return { label: "Fast", color: "var(--indigo)", bg: "var(--indigo-soft)" };
 }
 
 export default function WPMPanel() {
@@ -18,31 +25,27 @@ export default function WPMPanel() {
   const totalWordCount = useSessionStore((s) => s.totalWordCount);
 
   const latestWPM = wpmHistory.length > 0 ? wpmHistory[wpmHistory.length - 1].wpm : null;
-
-  // Build SVG polyline
-  let polyline = "";
-  if (wpmHistory.length >= 2) {
-    const tMin = wpmHistory[0].time;
-    const tMax = wpmHistory[wpmHistory.length - 1].time;
-    const tRange = Math.max(tMax - tMin, 1);
-
-    polyline = wpmHistory
-      .map((p) => {
-        const x = ((p.time - tMin) / tRange) * GRAPH_W;
-        const y = wpmToY(p.wpm);
-        return `${x},${y}`;
-      })
-      .join(" ");
-  }
-
-  // WPM range label
-  function getSpeedLabel(wpm: number): { label: string; color: string; bg: string } {
-    if (wpm < 100) return { label: "Slow", color: "#d97706", bg: "rgba(217,119,6,0.08)" };
-    if (wpm <= 160) return { label: "Normal", color: "var(--emerald)", bg: "var(--emerald-soft)" };
-    return { label: "Fast", color: "var(--indigo)", bg: "var(--indigo-soft)" };
-  }
-
   const speedBadge = latestWPM !== null ? getSpeedLabel(latestWPM) : null;
+
+  // Sliding window: latest point at CURSOR_RATIO across, older points scroll left
+  let points: { x: number; y: number }[] = [];
+  if (wpmHistory.length >= 1) {
+    const now = wpmHistory[wpmHistory.length - 1].time;
+    const windowStart = now - VISIBLE_WINDOW;
+
+    points = wpmHistory
+      .filter((p) => p.time >= windowStart)
+      .map((p) => {
+        // Map time so that `now` = CURSOR_RATIO * GRAPH_W
+        // and `now - VISIBLE_WINDOW` = left edge (negative, clipped)
+        const elapsed = p.time - now; // negative for past points
+        const x = (CURSOR_RATIO + elapsed / VISIBLE_WINDOW) * GRAPH_W;
+        return { x, y: wpmToY(p.wpm) };
+      })
+      .filter((p) => p.x >= 0);
+  }
+
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
     <div
@@ -117,7 +120,7 @@ export default function WPMPanel() {
           viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
           width="100%"
           height={GRAPH_H}
-          style={{ display: "block" }}
+          style={{ display: "block", overflow: "hidden" }}
         >
           {/* Normal range band (100-160 WPM) */}
           <rect
@@ -168,16 +171,14 @@ export default function WPMPanel() {
           )}
 
           {/* Latest dot */}
-          {wpmHistory.length > 0 &&
-            (() => {
-              const tMin = wpmHistory[0].time;
-              const tMax = wpmHistory[wpmHistory.length - 1].time;
-              const tRange = Math.max(tMax - tMin, 1);
-              const last = wpmHistory[wpmHistory.length - 1];
-              const x = ((last.time - tMin) / tRange) * GRAPH_W;
-              const y = wpmToY(last.wpm);
-              return <circle cx={x} cy={y} r={3} fill="var(--indigo)" />;
-            })()}
+          {points.length > 0 && (
+            <circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r={3}
+              fill="var(--indigo)"
+            />
+          )}
         </svg>
       )}
 
