@@ -69,6 +69,13 @@ export default function OrbControls({
         color: "var(--text-secondary)",
       };
     }
+    if (aiSpeaking) {
+      return {
+        background: "var(--red-light)",
+        border: "1px solid var(--red)",
+        color: "var(--red)",
+      };
+    }
     return {
       background: "var(--red-light)",
       border: "1px solid rgba(239,68,68,0.3)",
@@ -119,6 +126,17 @@ export default function OrbControls({
       >
         {getMuteIcon()}
         <span>{getMuteLabel()}</span>
+        {aiSpeaking && (
+          <span
+            style={{
+              width: "7px",
+              height: "7px",
+              borderRadius: "50%",
+              background: "var(--red)",
+              animation: "blink 1s ease-in-out infinite",
+            }}
+          />
+        )}
       </button>
 
       {/* End Session button */}

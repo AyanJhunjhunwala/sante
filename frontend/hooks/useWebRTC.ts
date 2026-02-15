@@ -16,6 +16,7 @@ export function useWebRTC() {
   const dcRef = useRef<RTCDataChannel | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const lastReadAloudResponseCreateAtRef = useRef(0);
 
   // ── Realtime event handler ──────────────────────────────────────────────
 
@@ -47,7 +48,21 @@ export function useWebRTC() {
             ((ev as { content_part?: { transcript?: string } }).content_part
               ?.transcript ??
               "");
-          if (t) appendUserTurn(t);
+          if (t) {
+            appendUserTurn(t);
+
+            const { sessionPhase, aiSpeaking } = store.getState();
+            const now = Date.now();
+            const canTrigger =
+              sessionPhase === "read_aloud" &&
+              !aiSpeaking &&
+              now - lastReadAloudResponseCreateAtRef.current > 700;
+
+            if (canTrigger && dcRef.current?.readyState === "open") {
+              dcRef.current.send(JSON.stringify({ type: "response.create" }));
+              lastReadAloudResponseCreateAtRef.current = now;
+            }
+          }
           break;
         }
 
@@ -130,6 +145,10 @@ export function useWebRTC() {
     }
     setAiSpeaking(false);
     setMuted(false);
+    // Re-enable actual mic tracks to match store state
+    localStreamRef.current?.getAudioTracks().forEach((t) => {
+      t.enabled = true;
+    });
   }, [sendDataChannelMessage, store]);
 
   // ── Mute ──────────────────────────────────────────────────────────────
@@ -177,6 +196,8 @@ export function useWebRTC() {
         dcRef.current = dc;
         dc.addEventListener("open", () => {
           console.log("[Santé] Data channel open");
+          // Trigger the AI's initial greeting
+          dc.send(JSON.stringify({ type: "response.create" }));
         });
         dc.addEventListener("message", (e) => {
           try {

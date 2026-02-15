@@ -28,14 +28,65 @@ import ResultsModal from "@/components/sidebar/ResultsModal";
 
 const ACTIVE_SEGMENT: Segment = "conversation";
 
-/** Count finalized assistant turns that belong to the given phase. */
+/** Count finalized assistant turns that belong to the given phase.
+ *  For the conversation phase, the first turn is the greeting and doesn't count. */
 function countPhasePrompts(
   log: { role: string; status: string; phase: SessionPhase }[],
   phase: SessionPhase,
 ): number {
-  return log.filter(
+  const total = log.filter(
     (t) => t.role === "assistant" && t.status === "final" && t.phase === phase,
   ).length;
+  // Skip the initial greeting in the conversation phase
+  if (phase === "conversation") return Math.max(0, total - 1);
+  return total;
+}
+
+function countReadAloudUserResponses(
+  log: { role: string; status: string; phase: SessionPhase }[],
+): number {
+  return log.filter(
+    (t) => t.role === "user" && t.status === "final" && t.phase === "read_aloud",
+  ).length;
+}
+
+function countReadAloudProgress(
+  log: { role: string; status: string; phase: SessionPhase }[],
+): number {
+  const assistantPrompts = countPhasePrompts(log, "read_aloud");
+  const userResponses = countReadAloudUserResponses(log);
+  return Math.min(assistantPrompts, userResponses + 1);
+}
+
+function hasUserAnsweredFinalConversationPrompt(
+  log: { id: number; role: string; status: string; phase: SessionPhase }[],
+): boolean {
+  let conversationPromptCount = 0;
+  let finalConversationPromptId: number | null = null;
+
+  for (const turn of log) {
+    if (
+      turn.role === "assistant" &&
+      turn.status === "final" &&
+      turn.phase === "conversation"
+    ) {
+      conversationPromptCount += 1;
+      // first assistant conversation turn is the greeting, not a prompt
+      if (conversationPromptCount > 1) {
+        finalConversationPromptId = turn.id;
+      }
+    }
+  }
+
+  if (!finalConversationPromptId) return false;
+
+  return log.some(
+    (turn) =>
+      turn.role === "user" &&
+      turn.status === "final" &&
+      turn.phase === "conversation" &&
+      turn.id > finalConversationPromptId,
+  );
 }
 
 export default function SessionPage() {
@@ -48,6 +99,7 @@ export default function SessionPage() {
   const sessionPhase = useSessionStore((s) => s.sessionPhase);
   const conversationLog = useSessionStore((s) => s.conversationLog);
   const resultsStatus = useSessionStore((s) => s.resultsStatus);
+  const vadThreshold = useSessionStore((s) => s.vadThreshold);
 
   const webRTC = useWebRTC();
   const audioRecorder = useAudioRecorder();
@@ -64,7 +116,7 @@ export default function SessionPage() {
   const currentPhaseCount =
     sessionPhase === "conversation"
       ? countPhasePrompts(conversationLog, "conversation")
-      : countPhasePrompts(conversationLog, "read_aloud");
+      : countReadAloudProgress(conversationLog);
   const currentPhaseTotal =
     sessionPhase === "conversation"
       ? CONVERSATION_PROMPT_COUNT
@@ -156,22 +208,45 @@ export default function SessionPage() {
 
     if (phase === "conversation") {
       const count = countPhasePrompts(conversationLog, "conversation");
-      if (count >= CONVERSATION_PROMPT_COUNT) {
+      const userAnsweredFinalPrompt =
+        hasUserAnsweredFinalConversationPrompt(conversationLog);
+      if (count >= CONVERSATION_PROMPT_COUNT && userAnsweredFinalPrompt) {
         phaseTransitioningRef.current = true;
         // Transition to Read Aloud phase
         (async () => {
           try {
+            // Cancel any in-progress AI response and reset mute state
+            webRTC.sendDataChannelMessage({ type: "response.cancel" });
+            store.getState().setAiSpeaking(false);
+            store.getState().setMuted(false);
+            webRTC.syncMute(false);
+
             const { instructions } = await fetchReadAloudPrompt().then(
               (inst) => ({ instructions: inst }),
             );
-            // Update AI instructions mid-session
+            // Update AI instructions mid-session (preserve VAD settings)
             webRTC.sendDataChannelMessage({
               type: "session.update",
               session: {
                 type: "realtime",
                 instructions,
+                audio: {
+                  input: {
+                    turn_detection: {
+                      type: "server_vad",
+                      threshold: vadThreshold,
+                      prefix_padding_ms: 500,
+                      silence_duration_ms: 800,
+                      create_response: false,
+                    },
+                  },
+                },
               },
             });
+
+            // Small delay to let session.update settle before triggering response
+            await new Promise((r) => setTimeout(r, 300));
+
             // Trigger the AI to produce its first Read Aloud prompt
             webRTC.sendDataChannelMessage({ type: "response.create" });
             store.getState().setSessionPhase("read_aloud");
@@ -183,12 +258,19 @@ export default function SessionPage() {
         })();
       }
     } else if (phase === "read_aloud") {
-      const count = countPhasePrompts(conversationLog, "read_aloud");
-      if (count >= READ_ALOUD_PROMPT_COUNT) {
+      const userResponses = countReadAloudUserResponses(conversationLog);
+      if (userResponses >= READ_ALOUD_PROMPT_COUNT) {
         endSession();
       }
     }
-  }, [conversationLog, connectionStatus, store, webRTC, endSession]);
+  }, [
+    conversationLog,
+    connectionStatus,
+    store,
+    webRTC,
+    endSession,
+    vadThreshold,
+  ]);
 
   // -----------------------------------------------------------------------
   // Init session
@@ -250,17 +332,80 @@ export default function SessionPage() {
     }
   }, [store, webRTC]);
 
+  useEffect(() => {
+    if (connectionStatus !== "active") return;
+    const phase = store.getState().sessionPhase;
+    webRTC.sendDataChannelMessage({
+      type: "session.update",
+      session: {
+        type: "realtime",
+        audio: {
+          input: {
+            turn_detection: {
+              type: "server_vad",
+              threshold: vadThreshold,
+              prefix_padding_ms: 500,
+              silence_duration_ms: 800,
+              create_response: phase === "conversation",
+            },
+          },
+        },
+      },
+    });
+  }, [connectionStatus, store, vadThreshold, webRTC, sessionPhase]);
+
   const getStatusText = () => {
     if (connectionStatus === "connecting") return "Connecting...";
     if (connectionStatus === "ending") return "Ending session...";
-    if (aiSpeaking) return "Santé is speaking";
-    if (isMuted) return "Microphone muted";
+    if (aiSpeaking) return "Santé is speaking — microphone is muted";
+    if (isMuted) return "Microphone muted — unmute to speak";
     if (connectionStatus === "active") return "Session active — speak freely";
     return "Connecting...";
   };
 
   const isActive =
     connectionStatus === "active" || connectionStatus === "ending";
+
+  const statusChip = (() => {
+    if (!isActive) {
+      return {
+        text: "Waiting for connection",
+        background: "#ffffff",
+        border: "1px solid var(--border)",
+        color: "var(--text-muted)",
+        dot: "var(--text-muted)",
+        animate: false,
+      };
+    }
+    if (aiSpeaking) {
+      return {
+        text: "AI speaking — please wait",
+        background: "var(--red-light)",
+        border: "1px solid rgba(239,68,68,0.25)",
+        color: "var(--red)",
+        dot: "var(--red)",
+        animate: true,
+      };
+    }
+    if (isMuted) {
+      return {
+        text: "Mic muted",
+        background: "rgba(148,163,184,0.12)",
+        border: "1px solid rgba(148,163,184,0.35)",
+        color: "var(--text-secondary)",
+        dot: "var(--text-muted)",
+        animate: false,
+      };
+    }
+    return {
+      text: "Listening",
+      background: "#ffffff",
+      border: "1px solid var(--border)",
+      color: "var(--text-secondary)",
+      dot: "var(--emerald)",
+      animate: false,
+    };
+  })();
 
   const phaseLabel =
     sessionPhase === "conversation" ? "Conversation" : "Read Aloud";
@@ -300,8 +445,10 @@ export default function SessionPage() {
               height: "8px",
               borderRadius: "50%",
               background:
-                connectionStatus === "active"
-                  ? "var(--emerald)"
+                aiSpeaking || isMuted
+                  ? "var(--red)"
+                  : connectionStatus === "active"
+                    ? "var(--emerald)"
                   : connectionStatus === "connecting"
                     ? "#d97706"
                     : "var(--text-muted)",
@@ -335,6 +482,7 @@ export default function SessionPage() {
           <VoiceOrb
             aiSpeaking={aiSpeaking}
             isActive={isActive}
+            isMuted={isMuted}
             phase={phaseLabel}
             currentPrompt={Math.min(currentPhaseCount, currentPhaseTotal)}
             totalPrompts={currentPhaseTotal}
@@ -353,6 +501,40 @@ export default function SessionPage() {
           >
             {getStatusText()}
           </p>
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 14px",
+              borderRadius: "999px",
+              marginBottom: "14px",
+              border: statusChip.border,
+              background: statusChip.background,
+              color: statusChip.color,
+              fontSize: "12px",
+              fontWeight: 600,
+              letterSpacing: "0.2px",
+              minHeight: "34px",
+              transition:
+                "background 0.25s ease, border-color 0.25s ease, color 0.25s ease",
+            }}
+          >
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: statusChip.dot,
+                animation: statusChip.animate
+                  ? "blink 1s ease-in-out infinite"
+                  : "none",
+                transition: "background 0.25s ease",
+              }}
+            />
+            {statusChip.text}
+          </div>
 
           {isActive && (
             <OrbControls

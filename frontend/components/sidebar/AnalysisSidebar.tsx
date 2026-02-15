@@ -4,7 +4,7 @@ import type { RefObject } from "react";
 import { useSessionStore } from "@/store/sessionStore";
 import { SEGMENT_LABELS } from "@/lib/constants";
 import WaveformPanel from "./WaveformPanel";
-import StressScorePanel from "./StressScorePanel";
+import NoiseThresholdPanel from "./NoiseThresholdPanel";
 import SpeechMetricsPanel from "./SpeechMetricsPanel";
 import LiveTranscriptPanel from "./LiveTranscriptPanel";
 
@@ -67,7 +67,7 @@ export default function AnalysisSidebar({ canvasRef }: AnalysisSidebarProps) {
       </div>
 
       <WaveformPanel canvasRef={canvasRef} />
-      <StressScorePanel />
+      <NoiseThresholdPanel />
       <SpeechMetricsPanel />
       <LiveTranscriptPanel />
     </div>
