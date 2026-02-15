@@ -1,13 +1,25 @@
 # Santé
 
-Voice-based exploratory health signal platform with real-time conversational capture, acoustic biomarker extraction, disfluency detection, safety triage, and clinician alert workflows.
+Voice intelligence platform for healthcare calls, built to capture diagnostic signal that is usually lost in discovery and onboarding conversations.
 
 ![System Architecture](architecture.png)
 
-## Who this is for
+## Intended users
 
-- Developers and OSS contributors extending frontend, backend, and ML integrations.
-- Clinicians and non-technical stakeholders reviewing report outputs and signal interpretation.
+- Patients, whose voice interactions can be turned into structured, longitudinal signal instead of one-off notes.
+- Doctors and care teams, who need faster, more objective call-derived evidence during triage, diagnosis support, and onboarding.
+
+## Short pitch
+
+Healthcare runs on phone calls, but critical diagnostic context is routinely lost during discovery calls. Santé transforms each call into actionable intelligence through real-time structured voice agents that analyze both acoustic and phonemic features, helping accelerate diagnosis support and patient onboarding. The opportunity sits in a fast-growing, multi-billion-dollar voice-health market (commonly cited around ~2.2x YoY in adjacent segments), and addresses today’s fragile heuristic-heavy workflows with reproducible signal capture.
+
+## Technical pitch
+
+Santé deploys specialized ASR, phoneme classification, and acoustic feature extraction models on RunPod serverless GPU endpoints, orchestrated by a multi-agent pipeline that processes voice streams in parallel. This architecture is designed to make voice biomarker detection scalable and cost-aware, turning everyday conversations into structured diagnostic opportunities.
+
+## Why now: DysfluentWFST
+
+Our clinical/research direction is aligned with the recent Berkeley DysfluentWFST release, treated in this project as a cutting-edge phoneme/disfluency foundation for healthcare voice analysis. The goal is to pair that frontier phoneme modeling with acoustic biomarkers and workflow-ready summaries for real-world clinical operations.
 
 ## Fast start
 
@@ -53,4 +65,4 @@ Voice-based exploratory health signal platform with real-time conversational cap
 
 ## Clinical/research framing
 
-Santé outputs are exploratory signal estimates and quality-weighted summaries intended for screening support and structured follow-up. They are not standalone diagnoses.
+Santé outputs are exploratory, quality-weighted signal estimates intended for screening support and structured follow-up, not standalone diagnosis. Any high-risk or urgent signal should be reviewed by qualified clinicians and integrated with broader clinical context.
