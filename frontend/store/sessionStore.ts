@@ -4,12 +4,14 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import type {
   AnalysisResults,
+  PitchPoint,
   Segment,
   SessionPhase,
   SpeechMetrics,
   StressScore,
   SummaryReport,
   Turn,
+  WPMPoint,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,12 @@ export interface SessionState {
   waveformData: number[];
   stressScore: StressScore | null;
   speechMetrics: SpeechMetrics | null;
+
+  // Live graphs
+  sessionStartedAt: number; // epoch ms, set when session starts
+  pitchHistory: PitchPoint[];
+  wpmHistory: WPMPoint[];
+  totalWordCount: number;
 
   // Post-session results
   analysisResults: AnalysisResults | null;
@@ -87,6 +95,11 @@ export interface SessionActions {
     isEstimate: boolean,
   ) => void;
   updateSpeechMetrics: (d: number, pacing: number, wpm: number | null) => void;
+
+  // Live graphs
+  appendPitch: (f0: number | null) => void;
+  appendUserWords: (text: string) => void;
+
   // Post-session results
   setResultsLoading: () => void;
   setResultsSuccess: (results: AnalysisResults) => void;
@@ -114,6 +127,10 @@ const initialState: SessionState = {
   waveformData: [],
   stressScore: null,
   speechMetrics: null,
+  sessionStartedAt: 0,
+  pitchHistory: [],
+  wpmHistory: [],
+  totalWordCount: 0,
   analysisResults: null,
   summaryReport: null,
   resultsStatus: "idle",
@@ -135,6 +152,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           segment,
           sessionId: crypto.randomUUID(),
           connectionStatus: "connecting",
+          sessionStartedAt: Date.now(),
         }),
 
       setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
@@ -241,6 +259,31 @@ export const useSessionStore = create<SessionState & SessionActions>()(
       updateSpeechMetrics: (disfluency, pacing, wpm) =>
         set({
           speechMetrics: { disfluency, pacing, wpm, updatedAt: Date.now() },
+        }),
+
+      appendPitch: (f0) =>
+        set((s) => {
+          const elapsed = s.sessionStartedAt
+            ? (Date.now() - s.sessionStartedAt) / 1000
+            : 0;
+          const point: PitchPoint = { time: elapsed, f0 };
+          // Keep last 120 points (~2 min at 1 point/s)
+          const history = [...s.pitchHistory, point].slice(-120);
+          return { pitchHistory: history };
+        }),
+
+      appendUserWords: (text) =>
+        set((s) => {
+          const words = text.trim().split(/\s+/).filter(Boolean).length;
+          const newTotal = s.totalWordCount + words;
+          const elapsed = s.sessionStartedAt
+            ? (Date.now() - s.sessionStartedAt) / 1000
+            : 0;
+          if (elapsed < 1) return { totalWordCount: newTotal };
+          const wpm = Math.round((newTotal / elapsed) * 60);
+          const point: WPMPoint = { time: elapsed, wpm };
+          const history = [...s.wpmHistory, point].slice(-120);
+          return { totalWordCount: newTotal, wpmHistory: history };
         }),
 
       setResultsLoading: () =>

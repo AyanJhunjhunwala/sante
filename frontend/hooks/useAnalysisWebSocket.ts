@@ -24,12 +24,19 @@ export function useAnalysisWebSocket() {
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data) as WSServerMessage;
-          const { updateWaveform, updateStressScore, updateSpeechMetrics } =
-            store.getState();
+          const {
+            updateWaveform,
+            updateStressScore,
+            updateSpeechMetrics,
+            appendPitch,
+          } = store.getState();
 
           switch (msg.type) {
             case "waveform":
               updateWaveform(msg.data);
+              break;
+            case "pitch":
+              appendPitch(msg.f0);
               break;
             case "stress_score":
               updateStressScore(msg.value, msg.confidence, msg.is_estimate);

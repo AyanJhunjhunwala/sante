@@ -27,6 +27,16 @@ export interface SpeechMetrics {
   updatedAt: number;
 }
 
+export interface PitchPoint {
+  time: number; // elapsed seconds
+  f0: number | null; // Hz or null if unvoiced
+}
+
+export interface WPMPoint {
+  time: number; // elapsed seconds
+  wpm: number;
+}
+
 export interface AnalysisResults {
   prediction: "STRESSED" | "NOT STRESSED" | "UNKNOWN";
   confidence: number;
@@ -74,6 +84,7 @@ export interface SummaryReport {
 export type WSServerMessage =
   | { type: "connected"; session_id: string; segment: string }
   | { type: "waveform"; data: number[] }
+  | { type: "pitch"; f0: number | null }
   | {
       type: "stress_score";
       value: number;

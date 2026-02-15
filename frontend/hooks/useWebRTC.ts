@@ -25,6 +25,7 @@ export function useWebRTC() {
         appendDraftDelta,
         finalizeLastAssistantTurn,
         appendUserTurn,
+        appendUserWords,
         setAiSpeaking,
         isMuted,
         setMuted,
@@ -47,7 +48,10 @@ export function useWebRTC() {
             ((ev as { content_part?: { transcript?: string } }).content_part
               ?.transcript ??
               "");
-          if (t) appendUserTurn(t);
+          if (t) {
+            appendUserTurn(t);
+            appendUserWords(t);
+          }
           break;
         }
 
@@ -61,6 +65,7 @@ export function useWebRTC() {
               const t = part.transcript || part.text || "";
               if (t.trim()) {
                 appendUserTurn(t);
+                appendUserWords(t);
                 break;
               }
             }
