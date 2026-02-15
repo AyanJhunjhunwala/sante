@@ -11,12 +11,16 @@ OpenAI Realtime events (server WebSocket mode, no ephemeral token needed):
 """
 
 import asyncio
-import audioop
 import base64
 import json
 import logging
 import os
 from typing import TYPE_CHECKING
+
+try:
+    import audioop
+except ImportError:  # Python 3.13+
+    import audioop_lts as audioop
 
 import websockets
 import websockets.exceptions

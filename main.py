@@ -223,6 +223,10 @@ class SessionSummaryChatRequest(BaseModel):
     message: str
 
 
+class GenerateReportRequest(BaseModel):
+    report: dict
+
+
 @app.post("/api/session-summary")
 async def api_session_summary(payload: SessionSummaryRequest):
     report = generate_dummy_session_report(
@@ -238,6 +242,31 @@ async def api_session_summary(payload: SessionSummaryRequest):
 async def api_session_summary_chat(payload: SessionSummaryChatRequest):
     reply = generate_dummy_chat_reply(report=payload.report, message=payload.message)
     return JSONResponse({"reply": reply})
+
+
+@app.post("/api/session-summary/report")
+async def api_generate_report(payload: GenerateReportRequest):
+    report = payload.report or {}
+    exec_summary = report.get("executive_summary", {}) if isinstance(report, dict) else {}
+    top_flags = exec_summary.get("top_flags", []) if isinstance(exec_summary, dict) else []
+    labels = []
+    for flag in top_flags[:3]:
+        if isinstance(flag, dict) and flag.get("label"):
+            labels.append(str(flag["label"]))
+
+    ai_summary = report.get("ai_summary") if isinstance(report, dict) else None
+    if isinstance(ai_summary, str) and ai_summary.strip():
+        narrative = ai_summary.strip()
+    elif labels:
+        narrative = (
+            "Session overview: notable signals include "
+            + ", ".join(labels)
+            + ". This is a preliminary, non-diagnostic summary."
+        )
+    else:
+        narrative = "Session overview generated. This is a preliminary, non-diagnostic summary."
+
+    return JSONResponse({"report": narrative})
 
 @app.post("/api/analyze/stress")
 async def api_analyze_stress(audio: UploadFile = File(...)):
