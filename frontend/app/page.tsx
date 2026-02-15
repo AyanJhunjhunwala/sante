@@ -11,12 +11,13 @@ export default function HomePage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          gap: "14px",
+          gap: "20px",
           color: "var(--blue)",
-          fontSize: "32px",
+          fontSize: "64px",
           fontWeight: 700,
-          padding: "28px 8px 0",
+          padding: "32px 4px 0",
           position: "relative",
+          top: "20px",
           zIndex: 1,
           letterSpacing: "-0.5px",
         }}
@@ -24,8 +25,8 @@ export default function HomePage() {
         <svg
           viewBox="0 0 24 24"
           fill="currentColor"
-          width="32"
-          height="32"
+          width="64"
+          height="64"
           style={{ flexShrink: 0 }}
         >
           <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
@@ -74,18 +75,6 @@ export default function HomePage() {
         <section style={{ marginBottom: "28px" }}>
           <div
             style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "1.4px",
-              marginBottom: "14px",
-            }}
-          >
-            Start Session
-          </div>
-          <div
-            style={{
               display: "flex",
               justifyContent: "center",
               alignItems: "center",
@@ -94,6 +83,7 @@ export default function HomePage() {
           >
             <Link
               href="/session"
+              className="start-conversation-orb"
               style={{
                 width: "220px",
                 height: "220px",
@@ -107,13 +97,13 @@ export default function HomePage() {
                 textDecoration: "none",
                 boxShadow: "0 18px 40px rgba(59,130,246,0.28)",
                 border: "1px solid rgba(255,255,255,0.32)",
-                transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                transition: "transform 0.2s ease",
                 fontWeight: 700,
                 letterSpacing: "0.2px",
               }}
             >
-              <span style={{ fontSize: "24px", lineHeight: 1 }}>Start</span>
-              <span style={{ fontSize: "14px", opacity: 0.9, marginTop: "4px" }}>
+              <span style={{ fontSize: "28px", lineHeight: 1 }}>Start</span>
+              <span style={{ fontSize: "16px", opacity: 0.9, marginTop: "4px" }}>
                 Conversation
               </span>
             </Link>
@@ -122,18 +112,6 @@ export default function HomePage() {
 
         {/* Research impact */}
         <section style={{ marginBottom: "48px" }}>
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "1.4px",
-              marginBottom: "14px",
-            }}
-          >
-            Clinical Signal Snapshot
-          </div>
           <div
             style={{
               display: "grid",

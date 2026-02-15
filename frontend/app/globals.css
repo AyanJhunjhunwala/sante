@@ -108,6 +108,10 @@ body {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+.start-conversation-orb:hover {
+  transform: scale(1.04);
+}
+
 /* ============================================
    Scrollbar
    ============================================ */

@@ -7,7 +7,7 @@ const VIEW_H = 200;
 const N = 60;
 const CURVE_TIGHTNESS = 0.4;
 const SPEED = 1;
-const AMP = 8;
+const AMP = 16;
 
 interface LayerConfig {
   baseY: number;
@@ -140,7 +140,7 @@ export default function ScribbleWave() {
           strokeWidth="28"
           strokeLinecap="round"
           strokeLinejoin="round"
-          opacity="0.05"
+          opacity="0.14"
         />
         <path
           ref={path2Ref}
@@ -149,7 +149,7 @@ export default function ScribbleWave() {
           strokeWidth="14"
           strokeLinecap="round"
           strokeLinejoin="round"
-          opacity="0.09"
+          opacity="0.22"
         />
         <path
           ref={path3Ref}
@@ -158,7 +158,7 @@ export default function ScribbleWave() {
           strokeWidth="5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          opacity="0.16"
+          opacity="0.34"
         />
       </svg>
     </div>
