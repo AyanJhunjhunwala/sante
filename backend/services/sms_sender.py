@@ -1,6 +1,11 @@
 """
-Twilio MMS sender.
-Sends the PDF report as a downloadable attachment to the patient after a call completes.
+Twilio SMS/MMS sender.
+Sends the PDF report link to the patient after a call completes.
+
+Always sends a plain SMS first (guaranteed delivery), then attempts MMS
+with the PDF attachment as a bonus. This ensures the patient always receives
+a notification even if Twilio can't fetch the media_url (e.g. ngrok tunnel
+down, free-tier interstitial page, URL unreachable).
 """
 
 import logging
@@ -17,8 +22,12 @@ def send_sms_report(
     call_sid: str,
 ) -> dict[str, Any]:
     """
-    Send the PDF report as an MMS attachment via Twilio.
-    The patient receives it as a downloadable file in their messaging app.
+    Send the PDF report to the patient via Twilio.
+
+    Strategy:
+      1. Always send a plain SMS with the report link (reliable delivery).
+      2. Also attempt MMS with the PDF as attachment (best-effort).
+         MMS can fail silently if Twilio can't fetch the media_url.
 
     Never raises — always returns a result dict so callers can log outcomes.
     Returns: {"sid": str | None, "status": str, "error": str | None}
@@ -37,83 +46,39 @@ def send_sms_report(
             "error": "Twilio credentials not configured",
         }
 
+    client = Client(account_sid, auth_token)
+
+    # --- Step 1: Plain SMS (always — guaranteed delivery) ---
+    sms_result: dict[str, Any] = {"sid": None, "status": "error", "error": None}
     try:
-        client = Client(account_sid, auth_token)
         message = client.messages.create(
+            body=(
+                "Hi! Your Sante voice health assessment is complete. "
+                f"View your report here: {report_url}"
+            ),
+            from_=from_number,
+            to=to_phone,
+        )
+        logger.info(
+            f"[sms] Sent to {to_phone}: sid={message.sid}, status={message.status}"
+        )
+        sms_result = {"sid": message.sid, "status": message.status, "error": None}
+    except Exception as sms_exc:
+        logger.error(f"[sms] Plain SMS failed to {to_phone}: {sms_exc}")
+        sms_result = {"sid": None, "status": "error", "error": str(sms_exc)}
+
+    # --- Step 2: MMS with PDF attachment (best-effort) ---
+    try:
+        mms_message = client.messages.create(
             body="Your Sante voice health report is attached.",
             from_=from_number,
             to=to_phone,
-            media_url=[report_url],  # Twilio fetches and attaches the PDF
+            media_url=[report_url],
         )
         logger.info(
-            f"[mms] Sent to {to_phone}: sid={message.sid}, status={message.status}"
+            f"[mms] Sent to {to_phone}: sid={mms_message.sid}, status={mms_message.status}"
         )
-        return {"sid": message.sid, "status": message.status, "error": None}
-    except Exception as exc:
-        logger.error(f"[mms] Failed to send MMS to {to_phone}: {exc}")
-        return {"sid": None, "status": "error", "error": str(exc)}
+    except Exception as mms_exc:
+        logger.warning(f"[mms] MMS failed to {to_phone} (non-fatal): {mms_exc}")
 
-
-def send_clinician_alert(
-    *,
-    to_phone: str,
-    report_url: str,
-    report_id: str,
-    signal_score: float,
-    urgency: str,
-    safety_category: str,
-    safety_confidence: float,
-    source: str,
-    call_sid: str = "",
-) -> dict[str, Any]:
-    """
-    Send a concise clinician-facing alert with report link.
-
-    Never raises — always returns a result dict.
-    """
-    from twilio.rest import Client  # lazy import
-
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-    from_number = os.getenv("TWILIO_PHONE_NUMBER", "")
-
-    if not all([account_sid, auth_token, from_number]):
-        logger.error("[alert] Twilio credentials not configured")
-        return {
-            "sid": None,
-            "status": "error",
-            "error": "Twilio credentials not configured",
-        }
-
-    try:
-        client = Client(account_sid, auth_token)
-        if urgency == "urgent":
-            body = (
-                "Sante URGENT safety alert: possible harm-to-self/others language detected. "
-                f"Category={safety_category or 'harm_to_self_or_others'}. "
-                f"Confidence={safety_confidence:.2f}. "
-                f"Report={report_id}. Source={source}. Details: {report_url}"
-            )
-        else:
-            body = (
-                "Sante alert: Elevated voice risk signal detected. "
-                f"Score={signal_score:.1f}. "
-                f"Report={report_id}. "
-                f"Source={source}. "
-                f"Details: {report_url}"
-            )
-        if call_sid:
-            body = f"{body} (CallSID={call_sid})"
-
-        message = client.messages.create(
-            body=body,
-            from_=from_number,
-            to=to_phone,
-        )
-        logger.info(
-            f"[alert] Sent clinician alert to {to_phone}: sid={message.sid}, status={message.status}"
-        )
-        return {"sid": message.sid, "status": message.status, "error": None}
-    except Exception as exc:
-        logger.error(f"[alert] Failed clinician alert to {to_phone}: {exc}")
-        return {"sid": None, "status": "error", "error": str(exc)}
+    return sms_result
