@@ -13,11 +13,14 @@ import asyncio
 import logging
 import os
 import random
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fpdf import FPDF
+from dotenv import load_dotenv
+
+# Load .env so RUNPOD_API_KEY, OPENAI_API_KEY etc. are available in the worker process.
+# (The FastAPI server calls load_dotenv() in main.py, but the RQ worker is a separate process.)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from services.sms_sender import send_sms_report
 
@@ -34,6 +37,8 @@ def process_call(
     call_status: str,
     duration_seconds: int,
     audio_path: str | None = None,
+    ai_transcript: str = "",
+    user_transcript: str = "",
 ) -> dict[str, Any]:
     """
     rq job entry point — called by the worker process.
@@ -42,13 +47,15 @@ def process_call(
     """
     logger.info(
         f"[worker] Processing call {call_sid} from {caller_phone} "
-        f"(status={call_status}, audio={'yes' if audio_path else 'no'})"
+        f"(status={call_status}, audio={'yes' if audio_path else 'no'}, "
+        f"ai_transcript={len(ai_transcript)} chars, user_transcript={len(user_transcript)} chars)"
     )
 
     analysis_results = _run_analysis(
         call_sid=call_sid,
         duration_seconds=duration_seconds,
         audio_path=audio_path,
+        user_transcript=user_transcript,
     )
 
     # Clean up temp audio file after analysis
@@ -63,6 +70,8 @@ def process_call(
         caller_phone=caller_phone,
         duration_seconds=duration_seconds,
         analysis_results=analysis_results,
+        ai_transcript=ai_transcript,
+        user_transcript=user_transcript,
     )
 
     backend_base_url = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
@@ -86,7 +95,11 @@ def process_call(
 
 
 def _run_analysis(
-    *, call_sid: str, duration_seconds: int, audio_path: str | None
+    *,
+    call_sid: str,
+    duration_seconds: int,
+    audio_path: str | None,
+    user_transcript: str = "",
 ) -> dict[str, Any]:
     """
     Run acoustic and phoneme analysis on the call audio.
@@ -96,18 +109,10 @@ def _run_analysis(
         logger.warning(f"[worker] No audio available for {call_sid}, using dummy data")
         return _run_dummy_analysis(call_sid=call_sid, duration_seconds=duration_seconds)
 
-    try:
-        audio_bytes = Path(audio_path).read_bytes()
-    except Exception as exc:
-        logger.error(f"[worker] Failed to read audio file {audio_path}: {exc}")
-        return _run_dummy_analysis(call_sid=call_sid, duration_seconds=duration_seconds)
+    logger.info(f"[worker] Running real analysis on {audio_path} for {call_sid}")
 
-    logger.info(
-        f"[worker] Running real analysis on {len(audio_bytes)} bytes for {call_sid}"
-    )
-
-    acoustic_result = _run_acoustics(audio_bytes, call_sid)
-    phoneme_result = _run_phonemes(audio_bytes, call_sid)
+    acoustic_result = _run_acoustics(audio_path, call_sid)
+    phoneme_result = _run_phonemes(audio_path, call_sid, user_transcript)
 
     return {
         "stub": False,
@@ -116,11 +121,11 @@ def _run_analysis(
     }
 
 
-def _run_acoustics(audio_bytes: bytes, call_sid: str) -> dict[str, Any]:
+def _run_acoustics(audio_path: str, call_sid: str) -> dict[str, Any]:
     try:
-        from services.acoustic_features import analyze_acoustics
+        from services.acoustic_features import analyze_acoustics_file
 
-        result = analyze_acoustics(audio_bytes)
+        result = analyze_acoustics_file(audio_path)
         if "error" in result:
             logger.warning(
                 f"[worker] Acoustics error for {call_sid}: {result['error']}"
@@ -132,17 +137,25 @@ def _run_acoustics(audio_bytes: bytes, call_sid: str) -> dict[str, Any]:
         return _dummy_acoustics(call_sid)
 
 
-def _run_phonemes(audio_bytes: bytes, call_sid: str) -> dict[str, Any]:
+def _run_phonemes(audio_path: str, call_sid: str, ref_text: str = "") -> dict[str, Any]:
     try:
         from agents.phoneme_detector import analyze_phonemes
 
-        result = asyncio.run(analyze_phonemes(audio_bytes))
+        logger.info(
+            f"[worker] Submitting phoneme job to RunPod for {call_sid} "
+            f"(wav_path={audio_path}, ref_text={len(ref_text)} chars)"
+        )
+        result = asyncio.run(analyze_phonemes(b"", ref_text, wav_path=audio_path))
         if "error" in result:
             logger.warning(
                 f"[worker] Phoneme analysis error for {call_sid}: {result['error']}"
             )
             return _dummy_phonemes(call_sid)
         dys = result.get("dys_detect", [])
+        logger.info(
+            f"[worker] Phoneme analysis complete for {call_sid}: "
+            f"total={len(result.get('decode_phonemes', []))}, disfluencies={len(dys)}"
+        )
         return {
             "total_detected": len(result.get("decode_phonemes", [])),
             "disfluency_count": len(dys),
@@ -203,88 +216,114 @@ def _generate_pdf_report(
     caller_phone: str,
     duration_seconds: int,
     analysis_results: dict[str, Any],
+    ai_transcript: str = "",
+    user_transcript: str = "",
 ) -> Path:
     """
-    Generate a PDF report using fpdf2.
+    Generate a PDF report using the session_summary agent (same as the web app).
     Saves to REPORTS_DIR/{call_sid}.pdf and returns the path.
+    Falls back to a basic PDF if session_summary fails.
     """
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    from agents.session_summary import (
+        generate_session_report,
+        export_session_report_pdf,
+    )
 
+    phonemes = analysis_results.get("phonemes", {})
+    acoustics = analysis_results.get("acoustics", {})
+
+    try:
+        report = generate_session_report(
+            segment="conversation",
+            user_transcription=user_transcript,
+            ai_transcription=ai_transcript,
+            duration_seconds=float(duration_seconds),
+            detected_phonemes=phonemes.get("dys_detect", []),
+            detected_dys_detect=phonemes.get("dys_detect", []),
+            acoustic_features=acoustics if not analysis_results.get("stub") else None,
+        )
+        # export_session_report_pdf returns a URL path like "/static/reports/sum_abc.pdf"
+        # The actual file is at REPORTS_DIR/{report_id}.pdf.
+        # Rename it to {call_sid}.pdf so the SMS URL stays consistent.
+        export_session_report_pdf(report=report)
+        report_id = report["report_id"]
+        export_path = REPORTS_DIR / f"{report_id}.pdf"
+
+        out_path = REPORTS_DIR / f"{call_sid}.pdf"
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        if export_path.exists() and export_path != out_path:
+            export_path.rename(out_path)
+        logger.info(f"[worker] PDF saved: {out_path}")
+        return out_path
+    except Exception as exc:
+        logger.error(
+            f"[worker] session_summary PDF failed for {call_sid}: {exc}, falling back to basic PDF"
+        )
+        return _generate_basic_pdf(
+            call_sid=call_sid,
+            duration_seconds=duration_seconds,
+            analysis_results=analysis_results,
+        )
+
+
+def _generate_basic_pdf(
+    *,
+    call_sid: str,
+    duration_seconds: int,
+    analysis_results: dict[str, Any],
+) -> Path:
+    """Minimal fallback PDF when session_summary agent is unavailable."""
+    from fpdf import FPDF
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     is_stub = analysis_results.get("stub", False)
 
     pdf = FPDF()
     pdf.add_page()
-
-    # Header
     pdf.set_font("Helvetica", "B", 20)
     pdf.cell(
         0, 12, "Sante Voice Health Report", new_x="LMARGIN", new_y="NEXT", align="C"
     )
-    pdf.ln(2)
-
-    # Metadata
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 7, f"Report ID:  {call_sid}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(
-        0,
-        7,
-        f"Generated:  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        new_x="LMARGIN",
-        new_y="NEXT",
-    )
     pdf.cell(0, 7, f"Duration:   {duration_seconds}s", new_x="LMARGIN", new_y="NEXT")
     if is_stub:
         pdf.set_text_color(180, 80, 0)
         pdf.cell(
             0,
             7,
-            "Note: Analysis data is placeholder (audio was not available)",
+            "Note: Analysis data is placeholder (audio unavailable)",
             new_x="LMARGIN",
             new_y="NEXT",
         )
         pdf.set_text_color(0, 0, 0)
-    pdf.ln(6)
-
-    # Acoustics section
+    pdf.ln(4)
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 9, "Acoustic Features", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
-    for key, val in analysis_results["acoustics"].items():
+    for key, val in analysis_results.get("acoustics", {}).items():
         pdf.cell(0, 7, f"  {key}:  {val}", new_x="LMARGIN", new_y="NEXT")
+    ph = analysis_results.get("phonemes", {})
     pdf.ln(4)
-
-    # Phonemes section
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 9, "Phoneme / Disfluency Analysis", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
-    ph = analysis_results["phonemes"]
     pdf.cell(
         0,
         7,
-        f"  Total phonemes detected:  {ph['total_detected']}",
+        f"  Total phonemes detected:  {ph.get('total_detected', 0)}",
         new_x="LMARGIN",
         new_y="NEXT",
     )
     pdf.cell(
         0,
         7,
-        f"  Disfluency events:         {ph['disfluency_count']}",
+        f"  Disfluency events:         {ph.get('disfluency_count', 0)}",
         new_x="LMARGIN",
         new_y="NEXT",
-    )
-    pdf.ln(8)
-
-    # Disclaimer
-    pdf.set_font("Helvetica", "I", 9)
-    pdf.multi_cell(
-        0,
-        6,
-        "DISCLAIMER: This report is generated for research purposes only. "
-        "It does not represent clinical diagnosis and results are not clinically validated. "
-        "Santé is a research tool, not a medical device.",
     )
 
     out_path = REPORTS_DIR / f"{call_sid}.pdf"
     pdf.output(str(out_path))
-    logger.info(f"[worker] PDF saved: {out_path}")
+    logger.info(f"[worker] Basic PDF saved: {out_path}")
     return out_path

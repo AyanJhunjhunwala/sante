@@ -37,19 +37,29 @@ def _is_cold_start_error(error_msg: str) -> bool:
     return any(phrase in lower for phrase in COLD_START_ERRORS)
 
 
-async def analyze_phonemes(audio_bytes: bytes, ref_text: str = "") -> dict:
+async def analyze_phonemes(
+    audio_bytes: bytes, ref_text: str = "", *, wav_path: str | None = None
+) -> dict:
     """
     Send audio bytes + reference text to the RunPod phoneme model.
     Returns dict with ref_phonemes, decode_phonemes, dys_detect on success,
     or {"error": "..."} on failure.
+
+    If wav_path is given the file is read directly (skips ffmpeg re-encode).
+    Otherwise audio_bytes are converted via to_wav_bytes (webm/opus → WAV).
     """
     api_key = os.getenv("RUNPOD_API_KEY", "").strip().strip('"').strip("'")
 
     if not api_key or api_key.startswith("your_"):
         return {"error": "RUNPOD_API_KEY not configured in .env"}
 
-    # Convert webm/opus → WAV so the RunPod handler (soundfile) can parse it
-    wav_bytes = to_wav_bytes(audio_bytes)
+    if wav_path is not None:
+        import pathlib
+
+        wav_bytes = pathlib.Path(wav_path).read_bytes()
+    else:
+        # Convert webm/opus → WAV so the RunPod handler (soundfile) can parse it
+        wav_bytes = to_wav_bytes(audio_bytes)
     audio_b64 = base64.b64encode(wav_bytes).decode("utf-8")
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -168,7 +178,13 @@ def _extract_results(data: dict) -> dict:
     if "error" in output:
         return {"error": output["error"]}
 
-    print(f"[phoneme_detector] Results received: id={output.get('id')}")
+    decode = output.get("decode_phonemes", [])
+    dys = output.get("dys_detect", [])
+    print(
+        f"[phoneme_detector] Results received: "
+        f"decode_phonemes={len(decode)}, dys_detect={len(dys)}, "
+        f"keys={list(output.keys())}"
+    )
 
     return {
         "ref_phonemes": output.get("ref_phonemes", []),
