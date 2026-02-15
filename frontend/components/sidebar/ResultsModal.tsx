@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/store/sessionStore";
 import { fetchSummaryChatReply } from "@/lib/api";
-import type { SummaryReport } from "@/lib/types";
+import type { SummaryReport, AcousticFeatures } from "@/lib/types";
 
 export default function ResultsModal() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function ResultsModal() {
   const [chatMessages, setChatMessages] = useState<
     { role: "user" | "ai"; text: string }[]
   >([
-    { role: "ai", text: "Ask about stress, accent, phonemes, or confidence." },
+    { role: "ai", text: "Ask about your phonemes, disfluencies, or acoustic features." },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -29,7 +29,7 @@ export default function ResultsModal() {
       setChatMessages([
         {
           role: "ai",
-          text: "Ask about stress, accent, phonemes, or confidence.",
+          text: "Ask about your phonemes, disfluencies, or acoustic features.",
         },
       ]);
       setChatInput("");
@@ -137,6 +137,20 @@ export default function ResultsModal() {
 /* Summary view                                                              */
 /* ────────────────────────────────────────────────────────────────────────── */
 
+const ACOUSTIC_LABELS: Record<keyof AcousticFeatures, { label: string; unit: string }> = {
+  f0_mean: { label: "Pitch (F0 mean)", unit: "st" },
+  f0_std: { label: "Pitch variability", unit: "" },
+  jitter: { label: "Jitter", unit: "" },
+  shimmer_db: { label: "Shimmer", unit: "dB" },
+  hnr: { label: "HNR", unit: "dB" },
+  loudness_mean: { label: "Loudness", unit: "" },
+  loudness_std: { label: "Loudness variability", unit: "" },
+  speaking_rate: { label: "Speaking rate", unit: "peaks/s" },
+  voiced_segments_per_sec: { label: "Voiced segments", unit: "/s" },
+  mean_pause_length: { label: "Mean pause", unit: "s" },
+  mean_voiced_length: { label: "Mean voiced length", unit: "s" },
+};
+
 function SummaryView({
   report,
   chatMessages,
@@ -156,19 +170,22 @@ function SummaryView({
   onChatSend: () => void;
   onClose: () => void;
 }) {
-  const accent = report.executive_summary?.accent_prediction ?? "Unknown";
-  const accentConf = (report.executive_summary?.accent_confidence ?? 0).toFixed(
-    2,
-  );
-  const stressBinary = String(
-    report.content?.stress_binary ?? "no",
-  ).toUpperCase();
   const userTx = report.content?.user_transcription ?? "";
-  const phonemes = (report.content?.phonemes ?? []).slice(0, 48);
+  const phonemes = report.content?.phonemes ?? [];
   const dysDetect = report.content?.dys_detect ?? [];
-  const phonemesSource = report.content?.phonemes_source ?? "dummy";
-  const metrics = Array.isArray(report.metrics) ? report.metrics : [];
-  const aiSummary = report.ai_summary ?? "No summary available.";
+  const acoustics = report.content?.acoustic_features ?? null;
+
+  // Build a lookup: phoneme index → dysfluency type
+  const dysMap = new Map<number, string>();
+  dysDetect.forEach((d, i) => {
+    if (d.dysfluency_type !== "normal") {
+      dysMap.set(i, d.dysfluency_type);
+    }
+  });
+
+  const disfluencyCount = dysDetect.filter(
+    (d) => d.dysfluency_type !== "normal",
+  ).length;
 
   return (
     <div
@@ -194,22 +211,20 @@ function SummaryView({
       <p
         style={{
           margin: 0,
-          fontSize: 14,
+          fontSize: 13,
           color: "var(--text-muted)",
           textAlign: "center",
         }}
       >
-        Accent: <strong>{accent}</strong> ({accentConf})
+        {report.segment} session &middot; {report.duration_seconds.toFixed(1)}s
       </p>
 
       {/* Grid blocks */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Block title="User Transcription">
-          {userTx || "No user transcription captured."}
+        <Block title="Transcription">
+          {userTx || "No transcription captured."}
         </Block>
-        <Block
-          title={`Phonemes${phonemesSource === "runpod" ? "" : " (dummy)"}`}
-        >
+        <Block title="Phonemes">
           {phonemes.length === 0 ? (
             <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
               N/A
@@ -224,26 +239,25 @@ function SummaryView({
               }}
             >
               {phonemes.map((ph, i) => {
-                const label = dysDetect[i] ?? "normal";
-                const chipColor =
-                  label === "repetition"
-                    ? "#d97706"
-                    : label === "prolongation"
+                const dysType = dysMap.get(i);
+                const chipColor = dysType === "repetition"
+                  ? "#d97706"
+                  : dysType === "deletion"
+                    ? "#dc2626"
+                    : dysType
                       ? "#ea580c"
-                      : label !== "normal"
-                        ? "#dc2626"
-                        : "var(--text-secondary)";
-                const chipBg =
-                  label === "repetition"
-                    ? "rgba(217,119,6,0.1)"
-                    : label === "prolongation"
+                      : "var(--text-secondary)";
+                const chipBg = dysType === "repetition"
+                  ? "rgba(217,119,6,0.1)"
+                  : dysType === "deletion"
+                    ? "rgba(220,38,38,0.1)"
+                    : dysType
                       ? "rgba(234,88,12,0.1)"
-                      : label !== "normal"
-                        ? "rgba(220,38,38,0.1)"
-                        : "transparent";
+                      : "transparent";
                 return (
                   <span
                     key={i}
+                    title={dysType ?? "normal"}
                     style={{
                       fontFamily: "monospace",
                       fontSize: 11,
@@ -262,55 +276,56 @@ function SummaryView({
             </div>
           )}
         </Block>
-        <Block title="Stress (binary)">{stressBinary}</Block>
+        <Block title="Disfluencies">
+          {disfluencyCount === 0
+            ? "None detected"
+            : `${disfluencyCount} detected`}
+        </Block>
         <Block title="Duration">{report.duration_seconds.toFixed(1)}s</Block>
       </div>
 
-      {/* Metrics table */}
-      <div
-        style={{
-          background: "var(--bg-subtle, #f8f9fb)",
-          borderRadius: 12,
-          padding: "12px 16px",
-        }}
-      >
-        <h3 style={h3Style}>Signals</h3>
-        {metrics.map((m) => (
-          <div key={m.name} style={metricRowStyle}>
-            <span style={{ flex: 1, textTransform: "capitalize" }}>
-              {m.name.replace(/_/g, " ")}
-            </span>
-            <span style={{ width: 70, textAlign: "right", fontWeight: 600 }}>
-              {Math.round(m.score * 100)}
-            </span>
-            <span
-              style={{
-                width: 70,
-                textAlign: "right",
-                color: "var(--text-muted)",
-                fontSize: 12,
-              }}
-            >
-              {Math.round(m.confidence * 100)}%
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* AI summary */}
-      <div>
-        <h3 style={h3Style}>AI Summary</h3>
-        <p
+      {/* Acoustic features table */}
+      {acoustics && (
+        <div
           style={{
-            margin: 0,
-            fontSize: 13,
-            color: "var(--text-secondary)",
-            lineHeight: 1.6,
+            background: "var(--bg-subtle, #f8f9fb)",
+            borderRadius: 12,
+            padding: "12px 16px",
           }}
         >
-          {aiSummary}
-        </p>
-      </div>
+          <h3 style={h3Style}>Acoustic Features</h3>
+          {(Object.keys(ACOUSTIC_LABELS) as (keyof AcousticFeatures)[]).map(
+            (key) => {
+              const val = acoustics[key];
+              if (val == null) return null;
+              const { label, unit } = ACOUSTIC_LABELS[key];
+              return (
+                <div key={key} style={metricRowStyle}>
+                  <span style={{ flex: 1 }}>{label}</span>
+                  <span
+                    style={{ width: 90, textAlign: "right", fontWeight: 600 }}
+                  >
+                    {val.toFixed(3)}
+                  </span>
+                  {unit && (
+                    <span
+                      style={{
+                        width: 50,
+                        textAlign: "left",
+                        paddingLeft: 4,
+                        color: "var(--text-muted)",
+                        fontSize: 11,
+                      }}
+                    >
+                      {unit}
+                    </span>
+                  )}
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
 
       {/* Chat */}
       <div
@@ -320,7 +335,7 @@ function SummaryView({
           padding: "12px 16px",
         }}
       >
-        <h3 style={h3Style}>Ask the summary AI</h3>
+        <h3 style={h3Style}>Ask about this report</h3>
         <div
           ref={chatLogRef}
           style={{
