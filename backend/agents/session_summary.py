@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+from openai import OpenAI
 
 
 def generate_session_report(
@@ -30,6 +33,63 @@ def generate_session_report(
             "acoustic_features": acoustic_features,
         },
     }
+
+
+def generate_ai_report(*, report: dict[str, Any]) -> str:
+    """Use OpenAI to generate a clinical-style narrative from session data."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        return "AI report generation unavailable — OPENAI_API_KEY not configured."
+
+    content = report.get("content", {})
+    acoustics = content.get("acoustic_features") or {}
+    phonemes = content.get("phonemes", [])
+    dys_detect = content.get("dys_detect", [])
+    user_tx = content.get("user_transcription", "")
+    duration = report.get("duration_seconds", 0)
+
+    flags = [d for d in dys_detect if d.get("dysfluency_type") != "normal"]
+
+    data_block = f"""Session duration: {duration}s
+Transcription: {user_tx[:500]}
+Phonemes detected: {len(phonemes)} ({' '.join(phonemes[:20])}{'...' if len(phonemes) > 20 else ''})
+Disfluencies: {len(flags)} flagged out of {len(dys_detect)} total
+"""
+    if flags:
+        flag_list = ", ".join(f"{d['phoneme']} ({d['dysfluency_type']})" for d in flags[:10])
+        data_block += f"Flagged disfluencies: {flag_list}\n"
+
+    if acoustics:
+        data_block += "Acoustic features:\n"
+        for k, v in acoustics.items():
+            data_block += f"  {k}: {v:.3f}\n"
+
+    client = OpenAI(api_key=api_key)
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a speech-language pathology research assistant. "
+                    "Given raw voice analysis data from a session, write a concise, "
+                    "informative report (3-5 paragraphs). Cover: "
+                    "1) Overall voice quality based on acoustic features (interpret jitter, shimmer, HNR, F0). "
+                    "2) Speech fluency based on phoneme and disfluency data. "
+                    "3) Speaking rate and rhythm observations. "
+                    "4) Key takeaways and areas to monitor. "
+                    "Use plain language accessible to a non-specialist. "
+                    "Do NOT diagnose — frame findings as observations. "
+                    "Include specific numbers from the data to support observations."
+                ),
+            },
+            {"role": "user", "content": data_block},
+        ],
+        max_tokens=800,
+        temperature=0.3,
+    )
+
+    return resp.choices[0].message.content or "Report generation returned empty."
 
 
 def generate_chat_reply(*, report: dict[str, Any], message: str) -> str:

@@ -154,6 +154,26 @@ export async function fetchReadAloudPrompt(): Promise<string> {
   return data.instructions;
 }
 
+/** Generate an AI narrative report from session data. */
+export async function fetchAIReport(
+  report: SummaryReport,
+): Promise<string> {
+  const res = await fetch(`${BACKEND_URL}/api/session-summary/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(
+      (err as { detail?: string }).detail || "Report generation failed",
+    );
+  }
+  const data = (await res.json()) as { report: string };
+  return data.report || "No report generated.";
+}
+
 /** Chat with the summary AI about a report. */
 export async function fetchSummaryChatReply(
   report: SummaryReport,

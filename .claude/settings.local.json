@@ -4,7 +4,11 @@
       "Bash(docker images:*)",
       "Bash(python:*)",
       "Bash(pip install:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx next info:*)",
+      "Bash(node:*)",
+      "Bash(npx next dev)",
+      "Bash(taskkill:*)"
     ]
   }
 }

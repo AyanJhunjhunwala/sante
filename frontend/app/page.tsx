@@ -1,5 +1,6 @@
 import ScribbleWave from "@/components/landing/ScribbleWave";
 import ImpactCard from "@/components/landing/ImpactCard";
+import TypewriterTagline from "@/components/landing/TypewriterTagline";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -57,18 +58,7 @@ export default function HomePage() {
             position: "relative",
           }}
         >
-          <h1
-            style={{
-              fontSize: "clamp(28px, 5vw, 48px)",
-              fontWeight: 700,
-              color: "var(--text)",
-              letterSpacing: "-0.03em",
-              lineHeight: 1.15,
-              margin: "0 0 8px",
-            }}
-          >
-            Your voice reveals more than words
-          </h1>
+          <TypewriterTagline />
         </section>
 
         {/* Session start */}
