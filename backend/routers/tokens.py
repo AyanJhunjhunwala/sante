@@ -109,6 +109,7 @@ async def get_ephemeral_token(segment: str) -> JSONResponse:
                 },
                 "transcription": {
                     "model": "gpt-4o-mini-transcribe",
+                    "language": "en",
                 },
             },
             "output": {

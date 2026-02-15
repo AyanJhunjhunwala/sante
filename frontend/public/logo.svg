@@ -6,13 +6,13 @@
 
   <text
     x="600"
-    y="272"
+    y="295"
     text-anchor="middle"
     font-family="Inter, Segoe UI, Arial, sans-serif"
-    font-size="214"
+    font-size="280"
     font-style="italic"
     font-weight="800"
-    letter-spacing="0"
+    letter-spacing="-1"
     text-rendering="geometricPrecision"
     fill="#3B82F6"
   >

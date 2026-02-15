@@ -773,21 +773,24 @@ def _build_estimates(
     coverage = (acoustic_coverage + duration_coverage + word_coverage + phoneme_coverage) / 4.0
 
     quality_trust = clamp01((quality_score / 100.0) * (1.0 - (0.65 * noise_likelihood)))
-    skepticism_scale = max(0.26, min(0.86, 0.34 + (0.52 * quality_trust) + (0.10 * coverage)))
+    skepticism_scale = max(0.32, min(0.90, 0.40 + (0.46 * quality_trust) + (0.14 * coverage)))
 
-    pause_long = norm(pause_len, 0.55, 1.60)
-    slow_rate = norm(0.50 - speaking_rate, 0.0, 0.45)
-    low_voiced_rate = norm(0.20 - voiced_rate, 0.0, 0.20)
-    voiced_short = norm(0.19 - float((acoustic_features or {}).get("mean_voiced_length", 0.0)), 0.0, 0.19)
+    pause_long = norm(pause_len, 0.30, 0.95)
+    slow_rate = norm(1.35 - speaking_rate, 0.0, 0.85)
+    low_voiced_rate = norm(1.05 - voiced_rate, 0.0, 0.75)
+    voiced_short = norm(0.17 - float((acoustic_features or {}).get("mean_voiced_length", 0.0)), 0.0, 0.12)
     jitter_high = norm(jitter, 0.015, 0.060)
     shimmer_high = norm(shimmer, 0.80, 2.80)
     low_hnr = norm(4.5 - hnr, 0.0, 3.5)
     loudness_volatility = norm(float((acoustic_features or {}).get("loudness_std", 0.0)), 0.40, 3.20)
     low_loudness = norm(0.08 - float((acoustic_features or {}).get("loudness_mean", 0.0)), 0.0, 0.08)
-    prosody_flat = norm(0.26 - float((acoustic_features or {}).get("f0_std", 0.0)), 0.0, 0.26)
+    prosody_flat = norm(0.34 - float((acoustic_features or {}).get("f0_std", 0.0)), 0.0, 0.30)
     dys_pressure = clamp01((0.65 * dys_ratio) + (0.35 * norm(len(dys_flags), 2.0, 34.0)))
     lexical_sparse = norm(30.0 - word_count, 0.0, 30.0)
     lexical_repetitive = norm(0.56 - lexical_diversity, 0.0, 0.56)
+    tempo_disruption = clamp01((0.50 * pause_long) + (0.35 * slow_rate) + (0.15 * low_voiced_rate))
+    energy_drop = clamp01((0.55 * low_loudness) + (0.30 * loudness_volatility) + (0.15 * low_hnr))
+    articulation_instability = clamp01((0.36 * jitter_high) + (0.32 * shimmer_high) + (0.32 * dys_pressure))
 
     context_penalty = (
         (1.0 - duration_coverage) * 0.24
@@ -827,7 +830,7 @@ def _build_estimates(
         score *= 1.0 - (0.20 * spread)
         score *= 1.0 - (0.34 * context_penalty)
         score *= 1.0 - (0.28 * clamp01(confound_penalty))
-        score *= 1.0 - (0.24 * low_risk_coherence * data_stability)
+        score *= 1.0 - (0.16 * low_risk_coherence * data_stability)
 
         return int(max(1, min(99, round(score))))
 
@@ -836,21 +839,21 @@ def _build_estimates(
         attenuation_context = clamp01((low_risk_coherence * 0.62) + (data_stability * 0.38))
 
         if signal_key == "intoxication_slur":
-            score -= 3.0 + (3.5 * attenuation_context)
-            if score < 24:
-                score *= 0.94
+            score -= 1.2 + (2.0 * attenuation_context)
+            if score < 20:
+                score *= 0.97
         elif signal_key == "aphasia_pattern":
-            score -= 2.0 + (2.8 * attenuation_context)
-            if score < 18:
-                score *= 0.92
-        elif signal_key == "voice_strain_resp":
-            score -= 4.0 + (4.2 * attenuation_context)
-            if score < 40:
-                score *= 0.90
-        elif signal_key == "cognitive_fatigue":
-            score -= 2.0 + (2.4 * attenuation_context)
+            score -= 1.0 + (1.6 * attenuation_context)
             if score < 16:
-                score *= 0.93
+                score *= 0.96
+        elif signal_key == "voice_strain_resp":
+            score -= 1.8 + (2.2 * attenuation_context)
+            if score < 30:
+                score *= 0.95
+        elif signal_key == "cognitive_fatigue":
+            score -= 0.8 + (1.5 * attenuation_context)
+            if score < 14:
+                score *= 0.97
 
         return int(max(1, min(99, round(score))))
 
@@ -905,13 +908,13 @@ def _build_estimates(
         "aphasia_pattern",
         skeptical_score(
         [
-            ("dys_pressure", dys_pressure, 0.34),
-            ("low_voiced_rate", low_voiced_rate, 0.22),
-            ("pause_long", pause_long, 0.14),
-            ("lexical_sparse", lexical_sparse, 0.15),
-            ("lexical_repetitive", lexical_repetitive, 0.15),
+            ("dys_pressure", dys_pressure, 0.30),
+            ("low_voiced_rate", low_voiced_rate, 0.18),
+            ("tempo_disruption", tempo_disruption, 0.16),
+            ("lexical_sparse", lexical_sparse, 0.18),
+            ("lexical_repetitive", lexical_repetitive, 0.18),
         ],
-        confound_penalty=(0.45 * noise_likelihood) + (0.20 * slow_rate),
+        confound_penalty=(0.35 * noise_likelihood) + (0.10 * slow_rate),
         ),
     )
     aphasia_evidence = [
@@ -946,13 +949,13 @@ def _build_estimates(
         "intoxication_slur",
         skeptical_score(
         [
-            ("jitter_high", jitter_high, 0.30),
-            ("shimmer_high", shimmer_high, 0.24),
-            ("pause_long", pause_long, 0.18),
-            ("slow_rate", slow_rate, 0.14),
-            ("dys_pressure", dys_pressure, 0.14),
+            ("jitter_high", jitter_high, 0.24),
+            ("shimmer_high", shimmer_high, 0.20),
+            ("articulation_instability", articulation_instability, 0.22),
+            ("tempo_disruption", tempo_disruption, 0.18),
+            ("low_hnr", low_hnr, 0.16),
         ],
-        confound_penalty=(0.55 * noise_likelihood) + (0.30 * prosody_flat),
+        confound_penalty=(0.45 * noise_likelihood) + (0.20 * prosody_flat),
         ),
     )
     intox_evidence = [
@@ -967,13 +970,13 @@ def _build_estimates(
         "cognitive_fatigue",
         skeptical_score(
         [
-            ("pause_long", pause_long, 0.30),
-            ("slow_rate", slow_rate, 0.24),
+            ("tempo_disruption", tempo_disruption, 0.34),
+            ("energy_drop", energy_drop, 0.22),
             ("prosody_flat", prosody_flat, 0.16),
-            ("dys_pressure", dys_pressure, 0.15),
-            ("low_loudness", low_loudness, 0.15),
+            ("dys_pressure", dys_pressure, 0.14),
+            ("low_loudness", low_loudness, 0.14),
         ],
-        confound_penalty=(0.35 * noise_likelihood) + (0.20 * shimmer_high),
+        confound_penalty=(0.30 * noise_likelihood) + (0.15 * shimmer_high),
         ),
     )
     fatigue_evidence = [
@@ -988,13 +991,14 @@ def _build_estimates(
         "voice_strain_resp",
         skeptical_score(
         [
-            ("low_hnr", low_hnr, 0.33),
-            ("shimmer_high", shimmer_high, 0.22),
-            ("jitter_high", jitter_high, 0.18),
+            ("low_hnr", low_hnr, 0.30),
+            ("shimmer_high", shimmer_high, 0.20),
+            ("jitter_high", jitter_high, 0.16),
             ("voiced_short", voiced_short, 0.14),
-            ("loudness_volatility", loudness_volatility, 0.13),
+            ("loudness_volatility", loudness_volatility, 0.12),
+            ("energy_drop", energy_drop, 0.08),
         ],
-        confound_penalty=(0.50 * noise_likelihood) + (0.20 * (1.0 - acoustic_coverage)),
+        confound_penalty=(0.45 * noise_likelihood) + (0.15 * (1.0 - acoustic_coverage)),
         ),
     )
     strain_evidence = [

@@ -18,10 +18,11 @@ export default function HomePage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "28px 4px 0",
+                padding: "24px 4px 0",
           position: "relative",
-          top: "20px",
+          top: "8px",
           zIndex: 1,
+                marginBottom: "-20px",
         }}
       >
         <Image
@@ -32,7 +33,7 @@ export default function HomePage() {
           priority
           unoptimized
           style={{
-            width: "460px",
+            width: "454px",
             height: "auto",
             maxWidth: "92vw",
           }}

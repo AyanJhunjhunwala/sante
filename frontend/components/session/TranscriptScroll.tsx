@@ -14,8 +14,11 @@ export default function TranscriptScroll() {
     }
   }, [conversationLog]);
 
+  // Ensure turns render in sequence order regardless of insertion timing
+  const sortedLog = [...conversationLog].sort((a, b) => a.id - b.id);
+
   // Detect index where the phase switches from "conversation" to "read_aloud"
-  const phaseSwitchIndex = conversationLog.findIndex(
+  const phaseSwitchIndex = sortedLog.findIndex(
     (t) => t.phase === "read_aloud",
   );
 
@@ -61,7 +64,7 @@ export default function TranscriptScroll() {
           padding: "14px 32px 16px",
         }}
       >
-        {conversationLog.length === 0 ? (
+        {sortedLog.length === 0 ? (
           <div
             style={{
               fontSize: "13px",
@@ -74,7 +77,7 @@ export default function TranscriptScroll() {
             The conversation will appear here...
           </div>
         ) : (
-          conversationLog.map((turn, idx) => {
+          sortedLog.map((turn, idx) => {
             const displayText =
               turn.role === "assistant"
                 ? stripSectionPrefix(turn.text)

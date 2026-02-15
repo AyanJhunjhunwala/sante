@@ -1,77 +1,56 @@
-TREEHACKSSS BAYBE
+# Santé
 
-## Benchmark replay (offline)
+Voice-based exploratory health signal platform with real-time conversational capture, acoustic biomarker extraction, disfluency detection, safety triage, and clinician alert workflows.
 
-This benchmark is intentionally light-weight and **comparison-oriented**:
-- not for exact apples-to-apples performance claims,
-- meant to show output capability differences (e.g., domain signal coverage and evidence richness).
+![System Architecture](architecture.png)
 
-Run from `backend/` with your virtualenv active:
+## Who this is for
 
-```bash
-python scripts/benchmark_replay.py --audio-dir <path_to_audio_folder> --benchmark-id feb15-run
-```
+- Developers and OSS contributors extending frontend, backend, and ML integrations.
+- Clinicians and non-technical stakeholders reviewing report outputs and signal interpretation.
 
-Fastest path (no args, uses built-in sample audio and auto benchmark id):
+## Fast start
 
-```bash
-python scripts/benchmark_replay.py
-```
+1. Read [Setup Guide](docs/SETUP.md)
+2. Copy [backend/.env.example](backend/.env.example) to `backend/.env`
+3. Start backend from `backend/`
+4. Start frontend from `frontend/`
 
-Default providers are now:
-- `sante-analysis` (local acoustic signal-based output)
-- `chatgpt-realtime` (prompted transcript-based baseline)
+## Architecture
 
-Key limitation metrics in summary JSON:
-- `instruction_compliance`
-- `output_richness`
-- `domain_signal_coverage`
-- `numeric_evidence_count`
+- System design and data flows: [Architecture](docs/ARCHITECTURE.md)
+- API and WebSocket contracts: [API Reference](docs/API_REFERENCE.md)
 
-Windows one-command wrapper:
+## External integrations
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run_benchmark_easy.ps1
-```
+### RunPod
 
-Optional flags:
-- `--providers sante-mock chatgpt-realtime`
-- `--max-files 20`
-- `--shuffle`
-- `--timeout 45`
+- Primary guide: [RunPod Integration](docs/integrations/RUNPOD.md)
 
-Outputs:
-- Raw runs JSONL: `backend/static/reports/benchmarks/<benchmark_id>.jsonl`
-- Aggregate summary: `backend/static/reports/benchmarks/<benchmark_id>_summary.json`
+### Other services
 
-## Action-forwarding MVP (clinician alerts)
+- OpenAI Realtime + Chat APIs: [OpenAI Integration](docs/integrations/OPENAI.md)
+- Twilio voice + SMS/MMS: [Twilio Integration](docs/integrations/TWILIO.md)
+- Redis + rq async jobs: [Redis Integration](docs/integrations/REDIS.md)
+- openSMILE acoustic extraction: [openSMILE Integration](docs/integrations/OPENSMILE.md)
 
-To enable autonomous forwarding when a high-risk session is detected, set these env vars in `backend/.env`:
+## Documentation index
 
-- `ACTION_FORWARD_ENABLED=true`
-- `ACTION_FORWARD_THRESHOLD=70`
-- `ACTION_FORWARD_MIN_QUALITY_GRADE=C`
-- `ACTION_FORWARD_ALLOWLIST=+15551234567,+15557654321`
+- [Setup Guide](docs/SETUP.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API Reference](docs/API_REFERENCE.md)
+- [RunPod Integration](docs/integrations/RUNPOD.md)
+- [OpenAI Integration](docs/integrations/OPENAI.md)
+- [Clinician Guide](docs/CLINICIAN_GUIDE.md)
+- [Benchmark Results](BENCHMARK_RESULTS.md)
 
-Twilio call-flow defaults:
+## Current stack
 
-- `ACTION_FORWARD_TWILIO_OPT_IN=true`
-- `ACTION_FORWARD_DEFAULT_RECIPIENT=+15551234567`
+- Frontend: Next.js 16, React 19, Zustand, Tailwind CSS
+- Backend: FastAPI, websockets, openSMILE, fpdf2
+- Async: Redis + rq worker jobs
+- External AI/ML: OpenAI APIs + RunPod serverless endpoints
 
-Frontend/web-flow opt-in (optional):
+## Clinical/research framing
 
-- `NEXT_PUBLIC_ACTION_FORWARD_OPT_IN=true`
-- `NEXT_PUBLIC_ACTION_FORWARD_RECIPIENT=+15551234567`
-
-Safety semantic agent (end-session transcript reasoning):
-
-- `SAFETY_AGENT_ENABLED=true`
-- `SAFETY_URGENT_CONFIDENCE_THRESHOLD=0.65`
-- `SAFETY_KEYWORDS_HARD_STOP=suicide,kill myself,end my life,hurt myself`
-
-Behavior summary:
-
-- Forwarding only runs when enabled and opted in.
-- Recipient must be present in `ACTION_FORWARD_ALLOWLIST`.
-- Session forwards only if signal threshold and quality gate pass.
-- Urgent safety signals (self-harm/violence language) bypass normal score threshold and escalate immediately to clinician alerting.
+Santé outputs are exploratory signal estimates and quality-weighted summaries intended for screening support and structured follow-up. They are not standalone diagnoses.

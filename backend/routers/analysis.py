@@ -151,6 +151,7 @@ async def api_analyze_transcript(audio: UploadFile = File(...)) -> JSONResponse:
         result = client.audio.transcriptions.create(
             model="gpt-4o-mini-transcribe",
             file=in_memory_file,
+            language="en",
         )
     except Exception as exc:
         raise HTTPException(

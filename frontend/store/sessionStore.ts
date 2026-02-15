@@ -238,13 +238,23 @@ export const useSessionStore = create<SessionState & SessionActions>()(
         set((s) => {
           const trimmed = text.trim();
           if (!trimmed) return s;
-          const last = s.conversationLog[s.conversationLog.length - 1];
-          if (
-            last?.role === "user" &&
-            last.status === "final" &&
-            last.text === trimmed
-          )
+
+          // Drop non-English (CJK / Hangul) hallucinations from the STT model
+          if (/[\u3000-\u9FFF\uAC00-\uD7AF\u1100-\u11FF]/.test(trimmed))
             return s;
+
+          // Time-based dedup: reject if an identical user turn was added within the last 2 s
+          const now = Date.now();
+          const recentDupe = s.conversationLog
+            .slice(-5)
+            .some(
+              (t) =>
+                t.role === "user" &&
+                t.status === "final" &&
+                t.text === trimmed &&
+                now - t.createdAt < 2000,
+            );
+          if (recentDupe) return s;
           const newTurn: Turn = {
             id: s.turnSequence + 1,
             role: "user",

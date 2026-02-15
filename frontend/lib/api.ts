@@ -29,7 +29,15 @@ export async function fetchEphemeralToken(
       }
     }
 
-    throw new Error(detail || `Token fetch failed (${res.status})`);
+    const fallback = detail || `Token fetch failed (${res.status})`;
+    const isMissingApiKey = /openai api key not configured/i.test(fallback);
+    if (isMissingApiKey) {
+      throw new Error(
+        `${fallback}. Add OPENAI_API_KEY to backend/.env (or repo root .env), then restart the backend server.`,
+      );
+    }
+
+    throw new Error(fallback);
   }
   const data = await res.json();
   const key = data.value ?? data.client_secret?.value;
