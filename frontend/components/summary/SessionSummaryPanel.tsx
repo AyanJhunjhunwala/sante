@@ -24,8 +24,6 @@ interface AcousticMeta {
   unit: string;
 }
 
-type SummaryTab = "insights" | "signalData";
-
 const ACOUSTIC_META: Record<keyof AcousticFeatures, AcousticMeta> = {
   f0_mean: { label: "Pitch (F0 mean)", unit: "st" },
   f0_std: { label: "Pitch variability", unit: "st" },
@@ -66,7 +64,6 @@ export default function SessionSummaryPanel({
 }: SessionSummaryPanelProps) {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SummaryTab>("insights");
 
   const [aiSections, setAiSections] = useState<StructuredSummarySections>(
     initialSections || {},
@@ -92,17 +89,6 @@ export default function SessionSummaryPanel({
   const disfluencyCount = (report.content.dys_detect || []).filter(
     (d) => d.dysfluency_type !== "normal",
   ).length;
-
-  const flaggedPhonemes = useMemo(
-    () =>
-      new Set(
-        (report.content.dys_detect || [])
-          .filter((item) => item.dysfluency_type !== "normal")
-          .map((item) => normalizePhonemeSymbol(item.phoneme))
-          .filter((item): item is string => Boolean(item)),
-      ),
-    [report.content.dys_detect],
-  );
 
   const topEstimates = useMemo(
     () => [...(report.estimates ?? [])].sort((a, b) => b.score - a.score),
@@ -190,12 +176,12 @@ export default function SessionSummaryPanel({
         <div
           style={{
             margin: 0,
-            padding: "10px 12px",
+            padding: "12px 14px",
             borderRadius: 10,
             border: "1px solid rgba(239,68,68,0.35)",
             background: "var(--red-light)",
             color: "var(--red)",
-            fontSize: 12,
+            fontSize: 15,
             fontWeight: 600,
             lineHeight: 1.45,
           }}
@@ -207,104 +193,22 @@ export default function SessionSummaryPanel({
         <p
           style={{
             margin: 0,
-            padding: "8px 10px",
+            padding: "10px 12px",
             borderRadius: 10,
             border: "1px solid var(--border)",
             background: "var(--panel)",
             color: "var(--text-secondary)",
-            fontSize: 12,
+            fontSize: 14,
           }}
         >
           {actionMessage}
         </p>
       )}
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <TabButton
-          active={activeTab === "insights"}
-          onClick={() => setActiveTab("insights")}
-          label="Insights"
-        />
-        <TabButton
-          active={activeTab === "signalData"}
-          onClick={() => setActiveTab("signalData")}
-          label="Signal Data"
-        />
-      </div>
-
-      {activeTab === "insights" && (
-        <>
-          <section style={sectionStyle}>
-            <h3 style={sectionTitleStyle}>Speech Alignment</h3>
-            <div style={alignmentContainerStyle}>
-              <div style={alignmentFlowBoxStyle}>
-                <p style={{ ...alignmentWordLabelStyle, margin: "0 0 6px" }}>Transcript</p>
-                <p style={{ ...paragraphStyle, margin: 0 }}>{transcription || "No transcription captured."}</p>
-              </div>
-
-              <div style={alignmentFlowBoxStyle}>
-                <p style={{ ...alignmentWordLabelStyle, margin: "0 0 6px" }}>Phoneme Stream</p>
-                <p
-                  style={{
-                    ...paragraphStyle,
-                    margin: 0,
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    lineHeight: 1.7,
-                    color: "var(--text-secondary)",
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {phonemeParagraph || "No phonemes detected."}
-                </p>
-              </div>
-
-              {flaggedPhonemes.size > 0 && (
-                <div style={alignmentInsightsBoxStyle}>
-                  <p style={{ ...alignmentWordLabelStyle, margin: 0 }}>Specific Insights</p>
-                  <p style={{ ...plainRowStyle, margin: "6px 0 0" }}>
-                    Dysfluency-marked phoneme symbols detected: {Array.from(flaggedPhonemes).slice(0, 12).join(", ")}.
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-          
-          <section style={sectionStyle}>
-            <h3 style={sectionTitleStyle}>Top Signals</h3>
-            <div style={signalLegendStyle}>
-              <span style={legendItemStyle}>
-                <span style={{ ...legendDotStyle, background: "rgba(59,130,246,0.9)" }} />
-                0–50 (lower signal)
-              </span>
-              <span style={legendItemStyle}>
-                <span style={{ ...legendDotStyle, background: "rgba(245,158,11,0.95)" }} />
-                51–100 (elevated signal)
-              </span>
-            </div>
-            {!hasElevatedSignal && (
-              <p style={{ ...paragraphStyle, color: "var(--text-secondary)", margin: "-2px 0 10px", fontSize: 12 }}>
-                No elevated exploratory signals in this sample. Cards below are shown for baseline monitoring.
-              </p>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-              {insightSignalCards.map((card) => (
-                <SignalCornerCard key={card.id} card={card} />
-              ))}
-            </div>
-            {aiLoading && <p style={{ ...paragraphStyle, color: "var(--text-muted)", marginTop: 10 }}>Generating signal interpretations…</p>}
-            {aiError && <p style={{ ...errorStyle, marginTop: 10 }}>{aiError}</p>}
-          </section>
-
-        </>
-      )}
-
-      {activeTab === "signalData" && (
-        <>
-          <section style={sectionStyle}>
-            <h3 style={sectionTitleStyle}>Features</h3>
+          <section style={{ ...sectionStyle, padding: "18px 20px" }}>
+            <h3 style={{ ...sectionTitleStyle, fontSize: 18, marginBottom: 12 }}>Features</h3>
             {acoustics ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {(Object.keys(ACOUSTIC_META) as (keyof AcousticFeatures)[]).map((key) => {
                   const metric = ACOUSTIC_META[key];
                   const val = acoustics[key];
@@ -312,14 +216,14 @@ export default function SessionSummaryPanel({
                   const barPercent = acousticBarPercent(key, val);
                   const refBand = acousticReferenceBand(key);
                   return (
-                    <div key={key} style={metricRowStyle}>
+                    <div key={key} style={{ ...metricRowStyle, gap: 8, paddingBottom: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                        <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>{metric.label}</span>
-                        <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 600 }}>
+                        <span style={{ color: "var(--text-secondary)", fontSize: 16, fontWeight: 600 }}>{metric.label}</span>
+                        <span style={{ color: "var(--text)", fontSize: 18, fontWeight: 700 }}>
                           {val.toFixed(3)} {metric.unit}
                         </span>
                       </div>
-                      <div style={acousticBarTrackStyle}>
+                      <div style={{ ...acousticBarTrackStyle, height: 10 }}>
                         <div style={{ ...acousticBarFillStyle, width: `${barPercent}%` }} />
                         <div
                           style={{
@@ -351,10 +255,61 @@ export default function SessionSummaryPanel({
               <p style={paragraphStyle}>No acoustic feature data available for this session.</p>
             )}
           </section>
-        </>
-      )}
 
-      <p style={{ margin: 0, fontSize: 11, color: "var(--text-dim)", textAlign: "center" }}>
+          <section style={sectionStyle}>
+            <h3 style={sectionTitleStyle}>Speech Alignment</h3>
+            <div style={alignmentContainerStyle}>
+              <div style={alignmentFlowBoxStyle}>
+                <p style={{ ...alignmentWordLabelStyle, margin: "0 0 6px" }}>Transcript</p>
+                <p style={{ ...paragraphStyle, margin: 0 }}>{transcription || "No transcription captured."}</p>
+              </div>
+
+              <div style={alignmentFlowBoxStyle}>
+                <p style={{ ...alignmentWordLabelStyle, margin: "0 0 6px" }}>Phoneme Stream</p>
+                <p
+                  style={{
+                    ...paragraphStyle,
+                    margin: 0,
+                    fontFamily: "monospace",
+                    fontSize: 15,
+                    lineHeight: 1.7,
+                    color: "var(--text-secondary)",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {phonemeParagraph || "No phonemes detected."}
+                </p>
+              </div>
+            </div>
+          </section>
+          
+          <section style={sectionStyle}>
+            <h3 style={sectionTitleStyle}>Top Signals</h3>
+            <div style={signalLegendStyle}>
+              <span style={legendItemStyle}>
+                <span style={{ ...legendDotStyle, background: "rgba(59,130,246,0.9)" }} />
+                0–50 (lower signal)
+              </span>
+              <span style={legendItemStyle}>
+                <span style={{ ...legendDotStyle, background: "rgba(245,158,11,0.95)" }} />
+                51–100 (elevated signal)
+              </span>
+            </div>
+            {!hasElevatedSignal && (
+              <p style={{ ...paragraphStyle, color: "var(--text-secondary)", margin: "-2px 0 10px", fontSize: 14 }}>
+                No elevated exploratory signals in this sample. Cards below are shown for baseline monitoring.
+              </p>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              {insightSignalCards.map((card) => (
+                <SignalCornerCard key={card.id} card={card} />
+              ))}
+            </div>
+            {aiLoading && <p style={{ ...paragraphStyle, color: "var(--text-muted)", marginTop: 10 }}>Generating signal interpretations…</p>}
+            {aiError && <p style={{ ...errorStyle, marginTop: 10 }}>{aiError}</p>}
+          </section>
+
+      <p style={{ margin: 0, fontSize: 13, color: "var(--text-dim)", textAlign: "center", lineHeight: 1.5 }}>
         This is a research tool, not a medical diagnosis. Interpret estimates with caution and confirm through formal assessment.
       </p>
     </div>
@@ -418,10 +373,10 @@ function SignalCornerCard({ card }: { card: SignalCard }) {
         position: "relative",
         border: `1px solid ${tone.border}`,
         borderRadius: 12,
-        padding: "12px 12px 10px",
+        padding: "14px 14px 12px",
         background: tone.bg,
         overflow: "hidden",
-        minHeight: 180,
+        minHeight: 170,
       }}
     >
       <div
@@ -451,22 +406,19 @@ function SignalCornerCard({ card }: { card: SignalCard }) {
           </button>
           {showFormula && <div style={infoTooltipStyle}>{card.calculation}</div>}
         </div>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--text)", fontWeight: 800 }}>
+        <p style={{ margin: 0, fontSize: 16, color: "var(--text)", fontWeight: 800 }}>
           {card.rank}. {card.label}
         </p>
-        <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--text-secondary)" }}>Score {card.score}/100</p>
-        <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--text)", lineHeight: 1.5 }}>
-          {card.suggestion}
-        </p>
+        <p style={{ margin: "5px 0 0", fontSize: 14, color: "var(--text-secondary)" }}>Score {card.score}/100</p>
         <p
           style={{
-            margin: "8px 0 0",
-            fontSize: 12,
+            margin: "10px 0 0",
+            fontSize: 14,
             color: "var(--text-secondary)",
             lineHeight: 1.55,
             background: "rgba(255,255,255,0.55)",
             borderRadius: 8,
-            padding: "6px 8px",
+            padding: "8px 10px",
           }}
         >
           {card.insightSnippet}
@@ -489,34 +441,6 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        border: "none",
-        borderRadius: 999,
-        padding: "6px 14px",
-        fontSize: 12,
-        fontWeight: 700,
-        cursor: "pointer",
-        background: active ? "var(--blue)" : "var(--bg-subtle, #f0f1f3)",
-        color: active ? "#fff" : "var(--text-secondary)",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 function signalToneByScore(score: number): {
   bg: string;
   border: string;
@@ -536,7 +460,6 @@ type SignalCard = {
   key: string;
   label: string;
   score: number;
-  suggestion: string;
   insightSnippet: string;
   calculation: string;
 };
@@ -596,7 +519,6 @@ function buildSignalCards(
       key: item.key,
       label: item.label,
       score: estimate?.score ?? 0,
-      suggestion: estimate?.suggestion ?? "Signal not detected in this sample.",
       insightSnippet:
         (sections[item.section] || sections.exploratory_risk_signals || "AI interpretation not available yet.")
           .trim()
@@ -634,12 +556,12 @@ const infoIconButtonStyle: CSSProperties = {
   border: "1px solid var(--border)",
   background: "rgba(255,255,255,0.9)",
   color: "var(--text-secondary)",
-  width: 18,
-  height: 18,
+  width: 22,
+  height: 22,
   borderRadius: 999,
-  fontSize: 11,
+  fontSize: 13,
   fontWeight: 700,
-  lineHeight: "16px",
+  lineHeight: "20px",
   textAlign: "center",
   padding: 0,
   cursor: "help",
@@ -650,25 +572,25 @@ const infoTooltipStyle: CSSProperties = {
   top: 24,
   right: 0,
   zIndex: 5,
-  width: 280,
+  width: 340,
   background: "#111827",
   color: "#fff",
   borderRadius: 8,
-  padding: "8px 10px",
-  fontSize: 11,
-  lineHeight: 1.45,
+  padding: "10px 12px",
+  fontSize: 13,
+  lineHeight: 1.5,
   boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
 };
 
 const sectionStyle: CSSProperties = {
   background: "var(--bg-subtle, #f8f9fb)",
   borderRadius: 12,
-  padding: "12px 14px",
+  padding: "14px 16px",
 };
 
 const sectionTitleStyle: CSSProperties = {
-  margin: "0 0 6px",
-  fontSize: 12,
+  margin: "0 0 8px",
+  fontSize: 15,
   fontWeight: 700,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
@@ -677,14 +599,14 @@ const sectionTitleStyle: CSSProperties = {
 
 const paragraphStyle: CSSProperties = {
   margin: 0,
-  fontSize: 13,
+  fontSize: 16,
   color: "var(--text)",
   lineHeight: 1.6,
 };
 
 const plainRowStyle: CSSProperties = {
   margin: "0 0 8px",
-  fontSize: 12,
+  fontSize: 14,
   color: "var(--text-secondary)",
   lineHeight: 1.6,
 };
@@ -695,7 +617,7 @@ const signalLegendStyle: CSSProperties = {
   alignItems: "center",
   flexWrap: "wrap",
   margin: "0 0 10px",
-  fontSize: 12,
+  fontSize: 14,
   color: "var(--text-secondary)",
 };
 
@@ -729,9 +651,9 @@ const alignmentContainerStyle: CSSProperties = {
 const alignmentFlowBoxStyle: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: 10,
-  padding: "10px 12px",
+  padding: "12px 14px",
   background: "#fff",
-  fontSize: 14,
+  fontSize: 16,
   lineHeight: 1.5,
   color: "var(--text)",
   whiteSpace: "pre-wrap",
@@ -746,7 +668,7 @@ const alignmentWordStackStyle: CSSProperties = {
 };
 
 const alignmentWordLabelStyle: CSSProperties = {
-  fontSize: 10,
+  fontSize: 12,
   color: "var(--text-muted)",
   textTransform: "uppercase",
   letterSpacing: "0.04em",
@@ -777,7 +699,7 @@ const alignmentSpacerStyle: CSSProperties = {
 const alignmentInsightsBoxStyle: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: 10,
-  padding: "8px 10px",
+  padding: "10px 12px",
   background: "rgba(255,255,255,0.78)",
 };
 
@@ -850,20 +772,20 @@ const headerRowStyle: CSSProperties = {
 const titleStyle: CSSProperties = {
   margin: 0,
   color: "var(--text)",
-  fontSize: 24,
+  fontSize: 30,
   fontWeight: 700,
 };
 
 const subtitleStyle: CSSProperties = {
   margin: "4px 0 0",
   color: "var(--text-muted)",
-  fontSize: 13,
+  fontSize: 15,
 };
 
 const errorStyle: CSSProperties = {
   margin: 0,
   color: "var(--red)",
-  fontSize: 12,
+  fontSize: 14,
 };
 
 const btnStyle: CSSProperties = {
@@ -871,8 +793,8 @@ const btnStyle: CSSProperties = {
   color: "#fff",
   border: "none",
   borderRadius: 999,
-  padding: "10px 16px",
-  fontSize: 13,
+  padding: "12px 18px",
+  fontSize: 15,
   fontWeight: 600,
   cursor: "pointer",
 };
@@ -882,8 +804,8 @@ const btnOutlineStyle: CSSProperties = {
   color: "var(--blue)",
   border: "2px solid var(--blue)",
   borderRadius: 999,
-  padding: "8px 14px",
-  fontSize: 13,
+  padding: "10px 16px",
+  fontSize: 15,
   fontWeight: 600,
   cursor: "pointer",
 };

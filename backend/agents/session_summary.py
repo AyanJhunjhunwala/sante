@@ -1027,23 +1027,6 @@ def _score_to_level(score: int, low_quality: bool) -> str:
 
 
 def _adapt_estimate_suggestion(base_suggestion: str, *, score: int, quality: dict[str, Any]) -> str:
-    if score <= 50:
-        return (
-            "Low signal in this sample. Monitor trend across repeated sessions and retest with a matched "
-            "microphone/device/codec setup before drawing conclusions."
-        )
-
-    if score <= 69:
-        return (
-            f"{base_suggestion} "
-            "Treat this as a cautious follow-up signal; confirm persistence with repeat sessions using a matched setup."
-        )
-
-    if quality.get("grade") in {"C", "D"}:
-        return (
-            f"{base_suggestion} "
-            "Given limited sample quality, keep this exploratory and confirm through matched-setup retests and broader assessment."
-        )
     return base_suggestion
 
 

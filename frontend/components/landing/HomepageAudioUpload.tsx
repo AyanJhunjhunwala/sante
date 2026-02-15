@@ -175,7 +175,7 @@ export default function HomepageAudioUpload() {
             opacity: isSubmitting ? 0.7 : 1,
           }}
         >
-          {isSubmitting ? "Transcribing and generating report..." : "Test with audio upload"}
+          {isSubmitting ? "Transcribing and generating report..." : "Analyze audio upload"}
         </button>
         <input
           ref={inputRef}
