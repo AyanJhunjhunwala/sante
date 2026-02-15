@@ -41,6 +41,13 @@ _enqueued_sids: set[str] = set()
 _AUDIO_PATH_WAIT_SECS = 3
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @router.post("/voice")
 async def twilio_voice_webhook(
     CallSid: str = Form(...),
@@ -159,6 +166,8 @@ async def twilio_status_callback(
                 audio_path=audio_path,
                 ai_transcript=ai_transcript,
                 user_transcript=user_transcript,
+                forward_opt_in=_env_bool("ACTION_FORWARD_TWILIO_OPT_IN", default=False),
+                forward_recipient=os.getenv("ACTION_FORWARD_DEFAULT_RECIPIENT", ""),
             )
             logger.info(f"[twilio] Enqueued analysis job: {job.id} for call {CallSid}")
         except Exception as exc:

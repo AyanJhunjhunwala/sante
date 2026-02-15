@@ -107,6 +107,21 @@ export interface StructuredSummarySections {
   follow_up?: string;
 }
 
+export interface SummaryActionResult {
+  status: string;
+  reason?: string;
+  recipient?: string;
+  source?: string;
+  signal_score?: number;
+  threshold?: number;
+  error?: string;
+  send?: {
+    sid?: string | null;
+    status?: string;
+    error?: string | null;
+  };
+}
+
 export interface SummaryReport {
   report_id: string;
   created_at: string;
@@ -116,6 +131,7 @@ export interface SummaryReport {
   estimates?: SummaryEstimate[];
   executive_summary?: SummaryExecutive;
   limitations?: string[];
+  action_result?: SummaryActionResult;
   content: {
     user_transcription: string;
     ai_transcription: string;

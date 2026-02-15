@@ -2,6 +2,8 @@
 Summary router — generates a session report after any session ends.
 """
 
+import os
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -13,6 +15,7 @@ from agents.session_summary import (
     generate_chat_reply,
     generate_session_report,
 )
+from services.action_forwarding import execute_forwarding
 
 router = APIRouter(prefix="/api/session-summary", tags=["summary"])
 
@@ -25,6 +28,8 @@ class SessionSummaryRequest(BaseModel):
     detected_phonemes: list[str] = []
     detected_dys_detect: list[dict] = []
     acoustic_features: dict | None = None
+    forward_opt_in: bool = False
+    forward_recipient: str = ""
 
 
 class SessionSummaryChatRequest(BaseModel):
@@ -51,6 +56,31 @@ async def api_session_summary(payload: SessionSummaryRequest) -> JSONResponse:
         detected_dys_detect=payload.detected_dys_detect,
         acoustic_features=payload.acoustic_features,
     )
+
+    action_result = {
+        "status": "not_forwarded",
+        "reason": "not_requested",
+    }
+    if payload.forward_opt_in and payload.forward_recipient.strip():
+        try:
+            static_url = export_session_report_pdf(report=report)
+            backend_base_url = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
+            report_url = f"{backend_base_url}{static_url}"
+            action_result = execute_forwarding(
+                report=report,
+                report_url=report_url,
+                forward_opt_in=payload.forward_opt_in,
+                forward_recipient=payload.forward_recipient,
+                source="web_summary",
+            )
+        except Exception as exc:
+            action_result = {
+                "status": "error",
+                "reason": "forwarding_failed",
+                "error": str(exc),
+            }
+
+    report["action_result"] = action_result
     return JSONResponse(report)
 
 

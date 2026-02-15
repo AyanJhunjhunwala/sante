@@ -43,3 +43,28 @@ Optional flags:
 Outputs:
 - Raw runs JSONL: `backend/static/reports/benchmarks/<benchmark_id>.jsonl`
 - Aggregate summary: `backend/static/reports/benchmarks/<benchmark_id>_summary.json`
+
+## Action-forwarding MVP (clinician alerts)
+
+To enable autonomous forwarding when a high-risk session is detected, set these env vars in `backend/.env`:
+
+- `ACTION_FORWARD_ENABLED=true`
+- `ACTION_FORWARD_THRESHOLD=70`
+- `ACTION_FORWARD_MIN_QUALITY_GRADE=C`
+- `ACTION_FORWARD_ALLOWLIST=+15551234567,+15557654321`
+
+Twilio call-flow defaults:
+
+- `ACTION_FORWARD_TWILIO_OPT_IN=true`
+- `ACTION_FORWARD_DEFAULT_RECIPIENT=+15551234567`
+
+Frontend/web-flow opt-in (optional):
+
+- `NEXT_PUBLIC_ACTION_FORWARD_OPT_IN=true`
+- `NEXT_PUBLIC_ACTION_FORWARD_RECIPIENT=+15551234567`
+
+Behavior summary:
+
+- Forwarding only runs when enabled and opted in.
+- Recipient must be present in `ACTION_FORWARD_ALLOWLIST`.
+- Session forwards only if signal threshold and quality gate pass.

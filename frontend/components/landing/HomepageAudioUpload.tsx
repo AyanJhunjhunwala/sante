@@ -24,6 +24,10 @@ const ACCEPTED_MIME_TYPES = [
   "audio/mp4",
   "audio/x-m4a",
 ];
+const ACTION_FORWARD_OPT_IN =
+  process.env.NEXT_PUBLIC_ACTION_FORWARD_OPT_IN === "true";
+const ACTION_FORWARD_RECIPIENT =
+  process.env.NEXT_PUBLIC_ACTION_FORWARD_RECIPIENT || "";
 
 function getFileExtension(filename: string): string {
   const index = filename.lastIndexOf(".");
@@ -137,6 +141,8 @@ export default function HomepageAudioUpload() {
         detected_phonemes: detectedPhonemes,
         detected_dys_detect: detectedDysDetect,
         acoustic_features: acousticFeatures,
+        forward_opt_in: ACTION_FORWARD_OPT_IN,
+        forward_recipient: ACTION_FORWARD_RECIPIENT,
       });
 
       setSummaryReport(report);

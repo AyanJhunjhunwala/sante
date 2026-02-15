@@ -174,6 +174,8 @@ export async function fetchSessionSummary(payload: {
   detected_phonemes?: string[];
   detected_dys_detect?: DysfluencyEntry[];
   acoustic_features?: Record<string, number> | null;
+  forward_opt_in?: boolean;
+  forward_recipient?: string;
 }): Promise<SummaryReport> {
   const res = await fetch(`${BACKEND_URL}/api/session-summary`, {
     method: "POST",

@@ -6,6 +6,7 @@ import { exportSummaryPdf, fetchStructuredAIReport } from "@/lib/api";
 import type {
   AcousticFeatures,
   StructuredSummarySections,
+  SummaryActionResult,
   SummaryEstimate,
   SummaryReport,
 } from "@/lib/types";
@@ -72,6 +73,10 @@ export default function SessionSummaryPanel({
   );
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const actionMessage = useMemo(
+    () => formatActionResult(report.action_result),
+    [report.action_result],
+  );
 
   const acoustics = report.content.acoustic_features;
   const phonemes = useMemo(
@@ -180,6 +185,21 @@ export default function SessionSummaryPanel({
       </div>
 
       {exportError && <p style={errorStyle}>{exportError}</p>}
+      {actionMessage && (
+        <p
+          style={{
+            margin: 0,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "var(--panel)",
+            color: "var(--text-secondary)",
+            fontSize: 12,
+          }}
+        >
+          {actionMessage}
+        </p>
+      )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <TabButton
@@ -321,6 +341,35 @@ export default function SessionSummaryPanel({
       </p>
     </div>
   );
+}
+
+function formatActionResult(action?: SummaryActionResult): string | null {
+  if (!action) return null;
+  if (action.status === "forwarded") {
+    return `Action taken: forwarded to clinician${action.recipient ? ` (${action.recipient})` : ""}.`;
+  }
+
+  if (action.status === "error") {
+    return "Action attempt failed; report was generated but forwarding did not complete.";
+  }
+
+  if (action.reason === "below_threshold") {
+    return "No forwarding action taken: risk signal did not cross threshold.";
+  }
+
+  if (action.reason === "recipient_not_allowlisted") {
+    return "No forwarding action taken: recipient is not allowlisted.";
+  }
+
+  if (action.reason === "opt_in_required") {
+    return "No forwarding action taken: forwarding opt-in is required.";
+  }
+
+  if (action.reason === "feature_disabled") {
+    return "No forwarding action taken: action forwarding is disabled.";
+  }
+
+  return "No forwarding action taken for this session.";
 }
 
 function SignalCornerCard({ card }: { card: SignalCard }) {

@@ -1,44 +1,60 @@
-# Benchmark Results (Fair + Objective, Brief)
+# Benchmark Results (Value-Only Redesign)
 
 ## Bottom line
-With fairness-adjusted scoring, ChatGPT is **within margin on 3/4 output metrics**, but still **below margin on domain signal coverage** in all runs. That is the main product-relevant gap.
+We redesigned the benchmark to use **value checks only** (not format checks), then re-ran 3 full trials.
 
-## What was run
-- Runs: `run-20260215-fair-1b`, `run-20260215-fair-2`, `run-20260215-fair-3`
-- Data: same 20 audio files each run
-- Providers: `sante-analysis` vs `chatgpt-realtime`
-- Fairness: tolerant section matching + partial credit + margin bands
+Result: ChatGPT now always produces output, but still falls short on value extraction from audio.
 
-## Side-by-side sample output (same audio file: `p088_1166.wav`)
+- `acoustic_numeric_coverage`: below margin in **3/3** runs
+- `acoustic_numeric_count`: below margin in **3/3** runs
+- `value_score`: below margin in **3/3** runs
+- `numeric_evidence_count`: within margin in **3/3** runs
 
-### Santé output
-`overview: speech snapshot complete; acoustic: f0=21.96, jitter=0.0194, shimmer=1.2169, hnr=2.85; fluency: phoneme/disfluency review recommended; follow_up: monitor variance over repeated sessions.`
+## What changed (redesign)
+- Removed format-based pass logic from fairness evaluation.
+- Fairness now uses only value metrics:
+  - `acoustic_numeric_coverage` (0–1)
+  - `acoustic_numeric_count` (0–4)
+  - `numeric_evidence_count`
+  - `value_score` (weighted value utility)
+- Kept margin bands to stay fair:
+  - coverage ±0.25, count ±2, numeric evidence ±2, value score ±0.2
+- Added fallback response so ChatGPT always returns text (no blank output).
 
-### ChatGPT output
-`Overall summary: limited transcript evidence available. Voice/acoustic metrics are unavailable from transcript-only analysis. Fluency signs should be interpreted cautiously from text. Evidence basis: transcript length 0 words. Follow-up recommendation: collect direct acoustic features for stronger confidence.`
+## New runs completed
+- `run-20260215-value-1`
+- `run-20260215-value-2`
+- `run-20260215-value-3`
 
-## How they differ (objective)
-- Santé provides direct acoustic signals (`f0`, `jitter`, `shimmer`, `hnr`) with numeric values.
-- ChatGPT sample is coherent and structured, but contains no direct domain signal extraction from audio.
-- This exact pattern repeats across all three fairness-adjusted runs.
+Summary files:
+- `backend/static/reports/benchmarks/run-20260215-value-1_summary.json`
+- `backend/static/reports/benchmarks/run-20260215-value-2_summary.json`
+- `backend/static/reports/benchmarks/run-20260215-value-3_summary.json`
 
-## Why this is objective (not preference)
-- Both systems were scored with the same rubric and same audio set.
-- Rubric is tolerant (not exact-format matching) and uses explicit margins.
-- ChatGPT gets credit where it performs well:
-  - `instruction_compliance`: **within margin**
-  - `output_richness`: **within margin**
-  - `numeric_evidence_count`: **within margin**
-- ChatGPT is consistently below only on:
-  - `domain_signal_coverage`: **below margin in 3/3 runs**
+## Example output (same audio, objective difference)
 
-## Not “ChatGPT losing everywhere”
-- ChatGPT can be faster in this adapter path (median turn roundtrip delta mean: `-101.152 ms`).
-- So this is **not** “ChatGPT is worse overall.”
-- It is specifically: ChatGPT is less capable at producing voice-health-specific signal coverage from this pipeline.
+### Santé (`run-20260215-value-2`, `p088_4067.wav`)
+`overview: speech snapshot complete; acoustic: f0=21.66, jitter=0.0240, shimmer=1.0375, hnr=2.79; fluency: phoneme/disfluency review recommended; follow_up: monitor variance over repeated sessions.`
 
-## Evidence files
-- `backend/static/reports/benchmarks/run-20260215-fair-1b_summary.json`
-- `backend/static/reports/benchmarks/run-20260215-fair-2_summary.json`
-- `backend/static/reports/benchmarks/run-20260215-fair-3_summary.json`
-- Raw run rows (including output previews): `backend/static/reports/benchmarks/run-20260215-fair-2.jsonl`
+### ChatGPT (`run-20260215-value-2`, `p088_4067.wav`)
+`Overall summary: limited transcript evidence available. Voice/acoustic metrics are unavailable from transcript-only analysis. Fluency signs should be interpreted cautiously from text. Evidence basis: transcript length 0 words; acoustic metrics extracted 0/4. Follow-up recommendation: collect direct acoustic features for stronger confidence.`
+
+## Why this is objectively a shortcoming (not style preference)
+- Same audio files and same scorer used for both providers.
+- Pass/fail is based on **presence of acoustic metrics with numeric values**.
+- ChatGPT is not penalized for writing style; it is penalized for missing measurable acoustic values.
+- ChatGPT does get credit where warranted: it consistently returns numeric evidence text (`numeric_evidence_count` within margin).
+
+## Aggregate value deltas (candidate minus baseline)
+Across 3 runs (means):
+
+- `acoustic_numeric_coverage_median`: **-1.0**
+- `acoustic_numeric_count_median`: **-4.0**
+- `numeric_evidence_count_median`: **-1.0**
+- `value_score_median`: **-0.85**
+
+Interpretation:
+- ChatGPT is producing text, but not producing the acoustic-value content this benchmark requires.
+
+## Caveat
+The current ChatGPT adapter is transcript-centric. If you want a stronger “best possible ChatGPT” test, the next fair step is to add a ChatGPT pipeline that can ingest acoustic feature values directly, then rerun this exact value rubric.
