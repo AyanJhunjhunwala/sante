@@ -15,6 +15,8 @@ import base64
 import json
 import logging
 import os
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 try:
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 OPENAI_REALTIME_URL = (
-    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
 )
 
 # Reuse the conversation phase prompt from tokens.py (same content, phone-adapted greeting)
@@ -71,13 +73,21 @@ class CallBridge:
         await bridge.cleanup()
     """
 
-    def __init__(self, call_sid: str, twilio_ws: "WebSocket") -> None:
+    def __init__(
+        self,
+        call_sid: str,
+        twilio_ws: "WebSocket",
+        audio_paths: "dict[str, str] | None" = None,
+    ) -> None:
         self.call_sid = call_sid
         self.twilio_ws = twilio_ws
         self.openai_ws: websockets.WebSocketClientProtocol | None = None
         self.caller_phone: str = "unknown"
         self.stream_sid: str = ""
         self._running = True
+        self._mulaw_chunks: list[bytes] = []  # accumulate caller audio
+        self.audio_path: str | None = None  # set when call ends
+        self._audio_paths = audio_paths  # shared dict — written immediately on stop
 
     async def run(self) -> None:
         """Open OpenAI Realtime connection and run bidirectional audio bridge."""
@@ -92,7 +102,7 @@ class CallBridge:
         }
 
         async with websockets.connect(
-            OPENAI_REALTIME_URL, extra_headers=headers
+            OPENAI_REALTIME_URL, additional_headers=headers
         ) as oai_ws:
             self.openai_ws = oai_ws
             logger.info(f"[bridge] OpenAI Realtime connected for call {self.call_sid}")
@@ -121,6 +131,7 @@ class CallBridge:
             },
         }
         await self.openai_ws.send(json.dumps(config))
+        # response.create is sent after session.updated is confirmed — see _openai_to_twilio
 
     async def _twilio_to_openai(self) -> None:
         """
@@ -151,6 +162,7 @@ class CallBridge:
                 elif event == "media":
                     mulaw_b64: str = frame["media"]["payload"]
                     mulaw_bytes = base64.b64decode(mulaw_b64)
+                    self._mulaw_chunks.append(mulaw_bytes)  # save for analysis
                     pcm16_bytes = _mulaw_to_pcm16_24k(mulaw_bytes)
                     pcm16_b64 = base64.b64encode(pcm16_bytes).decode()
 
@@ -166,6 +178,16 @@ class CallBridge:
                 elif event == "stop":
                     logger.info(f"[bridge] Twilio stream stopped: {self.call_sid}")
                     self._running = False
+                    self.audio_path = _save_mulaw_as_wav(
+                        self._mulaw_chunks, self.call_sid
+                    )
+                    # Write to shared dict immediately so the status callback
+                    # can find it even if it arrives before bridge.run() returns.
+                    if self.audio_path and self._audio_paths is not None:
+                        self._audio_paths[self.call_sid] = self.audio_path
+                        logger.info(
+                            f"[bridge] Audio path registered: {self.audio_path}"
+                        )
                     break
 
             except Exception as exc:
@@ -179,7 +201,12 @@ class CallBridge:
         """
         Read events from OpenAI Realtime and forward audio back to Twilio.
         Only response.audio.delta events carry audio to send to the caller.
+
+        Audio arriving before the Twilio stream_sid is known is buffered and
+        flushed once stream_sid is set (by the Twilio 'start' frame).
         """
+        pending_mulaw: list[bytes] = []
+
         try:
             async for raw_message in self.openai_ws:
                 if not self._running:
@@ -190,26 +217,118 @@ class CallBridge:
 
                     if event_type == "response.audio.delta":
                         pcm16_b64: str = event.get("delta", "")
-                        if pcm16_b64 and self.stream_sid:
-                            pcm16_bytes = base64.b64decode(pcm16_b64)
-                            mulaw_bytes = _pcm16_24k_to_mulaw(pcm16_bytes)
-                            mulaw_b64 = base64.b64encode(mulaw_bytes).decode()
+                        if not pcm16_b64:
+                            continue
+                        pcm16_bytes = base64.b64decode(pcm16_b64)
+                        mulaw_bytes = _pcm16_24k_to_mulaw(pcm16_bytes)
 
+                        if not self.stream_sid:
+                            # stream_sid not yet received — buffer for later
+                            if len(pending_mulaw) == 0:
+                                logger.info(
+                                    "[bridge] Buffering audio — stream_sid not yet set"
+                                )
+                            pending_mulaw.append(mulaw_bytes)
+                            continue
+
+                        if pending_mulaw:
+                            logger.info(
+                                f"[bridge] Flushing {len(pending_mulaw)} buffered audio chunks to Twilio"
+                            )
+                        # Flush any buffered chunks first
+                        for buffered in pending_mulaw:
                             await self.twilio_ws.send_text(
                                 json.dumps(
                                     {
                                         "event": "media",
                                         "streamSid": self.stream_sid,
-                                        "media": {"payload": mulaw_b64},
+                                        "media": {
+                                            "payload": base64.b64encode(
+                                                buffered
+                                            ).decode()
+                                        },
                                     }
                                 )
+                            )
+                        pending_mulaw.clear()
+
+                        mulaw_b64 = base64.b64encode(mulaw_bytes).decode()
+                        await self.twilio_ws.send_text(
+                            json.dumps(
+                                {
+                                    "event": "media",
+                                    "streamSid": self.stream_sid,
+                                    "media": {"payload": mulaw_b64},
+                                }
+                            )
+                        )
+
+                    elif event_type == "response.audio.done":
+                        logger.info("[bridge] response.audio.done received")
+                        # Flush any remaining buffered audio once stream_sid is known
+                        if pending_mulaw and self.stream_sid:
+                            logger.info(
+                                f"[bridge] Flushing {len(pending_mulaw)} buffered chunks on audio.done"
+                            )
+                            for buffered in pending_mulaw:
+                                await self.twilio_ws.send_text(
+                                    json.dumps(
+                                        {
+                                            "event": "media",
+                                            "streamSid": self.stream_sid,
+                                            "media": {
+                                                "payload": base64.b64encode(
+                                                    buffered
+                                                ).decode()
+                                            },
+                                        }
+                                    )
+                                )
+                            pending_mulaw.clear()
+                        elif pending_mulaw:
+                            logger.warning(
+                                f"[bridge] {len(pending_mulaw)} buffered chunks dropped — "
+                                f"stream_sid not set at audio.done"
                             )
 
                     elif event_type == "error":
                         logger.error(f"[bridge] OpenAI error: {event.get('error')}")
 
-                    elif event_type in ("session.created", "session.updated"):
-                        logger.info(f"[bridge] OpenAI session event: {event_type}")
+                    elif event_type == "response.done":
+                        resp = event.get("response", {})
+                        status = resp.get("status")
+                        usage = resp.get("usage", {})
+                        output = resp.get("output", [])
+                        logger.info(
+                            f"[bridge] response.done: status={status}, "
+                            f"output_items={len(output)}, usage={usage}"
+                        )
+                        if status == "failed":
+                            logger.error(
+                                f"[bridge] response failed: {resp.get('status_details')}"
+                            )
+
+                    elif event_type == "session.updated":
+                        logger.info(
+                            "[bridge] OpenAI session.updated — triggering greeting"
+                        )
+                        await self.openai_ws.send(
+                            json.dumps(
+                                {
+                                    "type": "response.create",
+                                    "response": {
+                                        "modalities": ["text", "audio"],
+                                        "instructions": "Greet the user with: Hi, this is Santé. How are you feeling today?",
+                                    },
+                                }
+                            )
+                        )
+
+                    elif event_type == "session.created":
+                        logger.info("[bridge] OpenAI session.created")
+
+                    else:
+                        logger.info(f"[bridge] OpenAI event (unhandled): {event_type}")
 
                 except Exception as exc:
                     logger.error(f"[bridge] openai_to_twilio inner error: {exc}")
@@ -229,6 +348,64 @@ class CallBridge:
 # ---------------------------------------------------------------------------
 # Audio format conversion helpers
 # ---------------------------------------------------------------------------
+
+
+def _save_mulaw_as_wav(chunks: list[bytes], call_sid: str) -> str | None:
+    """
+    Concatenate mulaw chunks, convert to 16kHz mono WAV via ffmpeg,
+    and save to a temp file. Returns the file path or None on failure.
+    The caller is responsible for deleting the file after analysis.
+    """
+    if not chunks:
+        logger.warning(f"[bridge] No audio chunks to save for {call_sid}")
+        return None
+
+    try:
+        import subprocess
+
+        raw_mulaw = b"".join(chunks)
+
+        # Write raw mulaw to temp file
+        with tempfile.NamedTemporaryFile(suffix=".ul", delete=False) as f_in:
+            f_in.write(raw_mulaw)
+            tmp_in = f_in.name
+
+        tmp_out = tmp_in.replace(".ul", ".wav")
+
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "mulaw",  # input format: raw G.711 mulaw
+                "-ar",
+                "8000",  # input sample rate
+                "-ac",
+                "1",  # mono
+                "-i",
+                tmp_in,
+                "-ar",
+                "16000",  # output: 16kHz (matches analysis services)
+                "-ac",
+                "1",
+                "-sample_fmt",
+                "s16",
+                tmp_out,
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+
+        Path(tmp_in).unlink(missing_ok=True)
+        logger.info(
+            f"[bridge] Saved caller audio: {tmp_out} ({len(raw_mulaw)} mulaw bytes)"
+        )
+        return tmp_out
+
+    except Exception as exc:
+        logger.error(f"[bridge] Failed to save audio for {call_sid}: {exc}")
+        return None
 
 
 def _mulaw_to_pcm16_24k(mulaw_8k: bytes) -> bytes:

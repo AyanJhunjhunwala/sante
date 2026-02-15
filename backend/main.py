@@ -3,6 +3,7 @@ Santé — Voice Health Analysis
 FastAPI backend: token minting, stress analysis upload, and real-time WS analysis.
 """
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -13,6 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from routers import analysis, summary, tokens, twilio_voice, websocket
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(title="Santé", description="Voice AI Health Platform")
 

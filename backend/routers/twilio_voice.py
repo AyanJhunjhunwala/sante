@@ -15,6 +15,7 @@ Three endpoints:
       We enqueue the analysis + PDF + SMS job in Redis.
 """
 
+import asyncio
 import logging
 import os
 
@@ -26,6 +27,14 @@ from services.redis_queue import enqueue_call_analysis
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/twilio", tags=["twilio"])
+
+# In-memory store: call_sid -> audio WAV path (set by bridge when call ends)
+_audio_paths: dict[str, str] = {}
+
+# Twilio sends the status POST almost simultaneously with the WS stop frame.
+# We wait up to this many seconds for the bridge to write the audio path before
+# giving up and enqueuing with audio_path=None.
+_AUDIO_PATH_WAIT_SECS = 3
 
 
 @router.post("/voice")
@@ -67,13 +76,20 @@ async def twilio_media_stream(websocket: WebSocket, call_sid: str) -> None:
     await websocket.accept()
     logger.info(f"[twilio] Media stream connected: call_sid={call_sid}")
 
-    bridge = CallBridge(call_sid=call_sid, twilio_ws=websocket)
+    import os, traceback as _tb
+
+    logger.info(f"[twilio] OPENAI_API_KEY set: {bool(os.getenv('OPENAI_API_KEY'))}")
+
+    bridge = CallBridge(
+        call_sid=call_sid, twilio_ws=websocket, audio_paths=_audio_paths
+    )
     try:
         await bridge.run()
+        logger.info(f"[twilio] bridge.run() returned normally for {call_sid}")
     except WebSocketDisconnect:
         logger.info(f"[twilio] Twilio disconnected: call_sid={call_sid}")
     except Exception as exc:
-        logger.error(f"[twilio] Bridge error for {call_sid}: {exc}")
+        logger.error(f"[twilio] Bridge error for {call_sid}: {exc}\n{_tb.format_exc()}")
     finally:
         await bridge.cleanup()
 
@@ -99,11 +115,29 @@ async def twilio_status_callback(
 
     if CallStatus in terminal_statuses:
         try:
+            # Wait briefly for the bridge's stop handler to write the audio path.
+            # The WS stop frame and this POST arrive almost simultaneously.
+            audio_path: str | None = None
+            deadline = asyncio.get_event_loop().time() + _AUDIO_PATH_WAIT_SECS
+            while asyncio.get_event_loop().time() < deadline:
+                if CallSid in _audio_paths:
+                    audio_path = _audio_paths.pop(CallSid)
+                    break
+                await asyncio.sleep(0.1)
+
+            if audio_path:
+                logger.info(f"[twilio] Audio path ready for {CallSid}: {audio_path}")
+            else:
+                logger.warning(
+                    f"[twilio] No audio path for {CallSid} after waiting {_AUDIO_PATH_WAIT_SECS}s"
+                )
+
             job = enqueue_call_analysis(
                 call_sid=CallSid,
                 caller_phone=From,
                 call_status=CallStatus,
                 duration_seconds=int(CallDuration or 0),
+                audio_path=audio_path,
             )
             logger.info(f"[twilio] Enqueued analysis job: {job.id} for call {CallSid}")
         except Exception as exc:
