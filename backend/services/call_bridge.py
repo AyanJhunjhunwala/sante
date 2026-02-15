@@ -41,63 +41,9 @@ OPENAI_REALTIME_URL = (
 CONVERSATION_PROMPT_COUNT = 4  # matches frontend/lib/constants.ts
 READ_ALOUD_PROMPT_COUNT = 3  # matches frontend/lib/constants.ts
 
-# Identical to tokens.py PROMPT_CONVERSATION_PHASE — phone greeting differs only in opener.
-PHONE_CONVERSATION_PROMPT = """
-You are Santé, a live voice conversation agent. English only.
-This is the CONVERSATION phase.
-
-Core behavior:
-- Behave like a real discussion partner, not a script reader.
-- Respond to what the user just said, then ask ONE natural follow-up question.
-- Keep language supportive, neutral, and non-diagnostic.
-- Never claim medical certainty. Do not provide diagnosis or treatment.
-
-CRITICAL output rules:
-- NEVER start your response with "Conversation:", "Read Aloud:", or any label/prefix.
-- NEVER include a "Read Aloud" or "Repeat Back" section.
-- Just speak naturally without any labels or formatting.
-- Give exactly ONE response per user turn. Do NOT say multiple things.
-- After you ask your question, STOP and WAIT for the user to answer.
-
-Length constraints:
-- Max 15 words per response.
-- One sentence only.
-
-Flow guidance:
-- Start with: "Hi, this is Santé. How are you feeling today?"
-- Ask one question at a time, adapting based on the user's prior answer.
-- Topics: how they're feeling, their day, recent activities, sleep, energy, mood.
-- Use brief acknowledgments, then continue with the next best follow-up.
-""".strip()
-
-# Identical to tokens.py PROMPT_READ_ALOUD_PHASE.
-PHONE_READ_ALOUD_PROMPT = """
-You are Santé, a live voice conversation agent. English only.
-This is the READ ALOUD phase.
-
-Core behavior:
-- Provide exactly ONE short sentence for the user to repeat back to you.
-- The sentence should be clear, natural English for speech signal capture.
-- After the user repeats it, give a brief one-word acknowledgment ("Good", "Great", "Nice") then the next sentence.
-- Do NOT have a conversation. Do NOT ask personal questions.
-
-CRITICAL output rules:
-- NEVER start your response with "Read Aloud:", "Conversation:", or any label/prefix.
-- Just say the sentence directly without any labels or formatting.
-- Give exactly ONE sentence per turn. Do NOT give multiple sentences.
-- Output only the repeat sentence; do NOT add a second sentence, follow-up, or extra prompt.
-- Do NOT give the next repeat sentence until the user has spoken.
-- After giving a sentence, STOP and WAIT for the user to repeat it.
-
-Length constraints:
-- Each sentence: 5-10 words.
-- Vary sentence structure and phoneme coverage.
-
-Flow guidance:
-- Start with: "Thanks—now repeat after me: The sun is shining today."
-- Use everyday sentences that cover diverse sounds and phonemes.
-- Keep a calm, supportive tone.
-""".strip()
+# Import prompts from tokens.py so phone and web use the exact same instructions.
+from routers.tokens import PROMPT_CONVERSATION_PHASE as PHONE_CONVERSATION_PROMPT
+from routers.tokens import PROMPT_READ_ALOUD_PHASE as PHONE_READ_ALOUD_PROMPT
 
 
 class CallBridge:
@@ -138,6 +84,9 @@ class CallBridge:
         self._user_spoke: bool = (
             False  # True when user item created since last AI response
         )
+        self._awaiting_final_answer: bool = (
+            False  # True after last conversation question asked, waiting for user answer
+        )
         # Transcript accumulators
         self._ai_transcript_parts: list[str] = []
         self._user_transcript_parts: list[str] = []
@@ -177,9 +126,9 @@ class CallBridge:
             "session": {
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.85,
+                    "threshold": 0.75,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 1500,
+                    "silence_duration_ms": 900,
                     "create_response": True,
                 },
                 "input_audio_format": "pcm16",
@@ -376,10 +325,22 @@ class CallBridge:
                             # Mark that the user actually spoke — used to gate conversation
                             # prompt counting so echo/noise doesn't auto-advance the phase.
                             self._user_spoke = True
+                            # If the last conversation question was asked and we're waiting
+                            # for the user to answer it, transition now.
+                            if (
+                                self._phase == "conversation"
+                                and self._awaiting_final_answer
+                            ):
+                                self._awaiting_final_answer = False
+                                self._phase_transitioning = True
+                                logger.info(
+                                    "[bridge] User answered final conversation question — transitioning to read aloud"
+                                )
+                                await self._transition_to_read_aloud()
                             # In read aloud phase, count each user turn as a completed repeat.
                             # NOTE: input_audio transcript is null here — it arrives via
                             # conversation.item.input_audio_transcription.completed later.
-                            if self._phase == "read_aloud":
+                            elif self._phase == "read_aloud":
                                 self._read_aloud_user_count += 1
                                 logger.info(
                                     f"[bridge] Read aloud: {self._read_aloud_user_count}/{READ_ALOUD_PROMPT_COUNT} user repeats"
@@ -388,16 +349,23 @@ class CallBridge:
                                     self._read_aloud_user_count
                                     >= READ_ALOUD_PROMPT_COUNT
                                 ):
-                                    # User has done all repeats. Cancel the VAD-triggered
-                                    # auto-response immediately so the AI doesn't say a
-                                    # 4th sentence. The response.done (cancelled) will
-                                    # trigger the goodbye sequence.
                                     logger.info(
-                                        "[bridge] Read aloud complete — cancelling auto-response, will send goodbye"
+                                        "[bridge] Read aloud complete — triggering goodbye"
                                     )
                                     self._phase = "ending"
+                                    await self._trigger_goodbye()
+                                else:
+                                    # Manually trigger the next read-aloud sentence.
+                                    # create_response=False means VAD will not auto-reply.
                                     await self.openai_ws.send(
-                                        json.dumps({"type": "response.cancel"})
+                                        json.dumps(
+                                            {
+                                                "type": "response.create",
+                                                "response": {
+                                                    "modalities": ["text", "audio"]
+                                                },
+                                            }
+                                        )
                                     )
 
                     elif (
@@ -431,57 +399,7 @@ class CallBridge:
                             and self._phase == "ending"
                             and not self._goodbye_sent
                         ):
-                            # Handle both completed (AI said acknowledgment naturally)
-                            # and cancelled (we cancelled the auto-response on 3rd repeat)
-                            # to trigger the goodbye sequence.
-                            logger.info(
-                                "[bridge] Saving audio+transcripts before goodbye"
-                            )
-                            self.audio_path = _save_mulaw_as_wav(
-                                self._mulaw_chunks, self.call_sid
-                            )
-                            if self._audio_paths is not None:
-                                if self.audio_path:
-                                    self._audio_paths[self.call_sid] = self.audio_path
-                                    logger.info(
-                                        f"[bridge] Audio path registered early: {self.audio_path}"
-                                    )
-                                self._audio_paths[f"{self.call_sid}:ai_transcript"] = (
-                                    " ".join(self._ai_transcript_parts)
-                                )
-                                self._audio_paths[
-                                    f"{self.call_sid}:user_transcript"
-                                ] = " ".join(self._user_transcript_parts)
-                            self._goodbye_sent = True
-                            logger.info("[bridge] Disabling VAD and sending goodbye")
-                            await self.openai_ws.send(
-                                json.dumps({"type": "input_audio_buffer.clear"})
-                            )
-                            await self.openai_ws.send(
-                                json.dumps(
-                                    {
-                                        "type": "session.update",
-                                        "session": {
-                                            "turn_detection": None,
-                                            "instructions": (
-                                                "Say exactly and only: "
-                                                "'Thank you for completing the assessment. Goodbye!' "
-                                                "Do not say anything else."
-                                            ),
-                                        },
-                                    }
-                                )
-                            )
-                            await self.openai_ws.send(
-                                json.dumps(
-                                    {
-                                        "type": "response.create",
-                                        "response": {
-                                            "modalities": ["text", "audio"],
-                                        },
-                                    }
-                                )
-                            )
+                            await self._trigger_goodbye()
                         elif status == "completed":
                             if self._phase == "conversation":
                                 is_greeting = self._conversation_ai_count == 0
@@ -501,21 +419,23 @@ class CallBridge:
                                     if (
                                         prompts_asked >= CONVERSATION_PROMPT_COUNT
                                         and not self._phase_transitioning
+                                        and not self._awaiting_final_answer
                                     ):
-                                        self._phase_transitioning = True
-                                        await self._transition_to_read_aloud()
+                                        # Don't transition yet — wait for user to answer
+                                        # the last question first.
+                                        self._awaiting_final_answer = True
+                                        logger.info(
+                                            "[bridge] Final conversation question asked — waiting for user's answer"
+                                        )
                                 else:
                                     logger.info(
                                         "[bridge] AI response without user input — ignoring (echo/noise suppression)"
                                     )
                             elif self._phase == "ending" and self._goodbye_sent:
-                                # Goodbye audio has finished playing — hang up now.
+                                # Closing message played — user will hang up on their own.
                                 logger.info(
-                                    f"[bridge] Goodbye complete — hanging up {self.call_sid}"
+                                    f"[bridge] Closing message complete for {self.call_sid} — waiting for user to hang up"
                                 )
-                                await _hangup_call(self.call_sid)
-                                self._running = False
-                                break
 
                     elif event_type == "session.updated":
                         if (
@@ -532,8 +452,21 @@ class CallBridge:
                                         "type": "response.create",
                                         "response": {
                                             "modalities": ["text", "audio"],
-                                            "instructions": "Greet the user with: Hi, this is Santé. How are you feeling today?",
+                                            "instructions": "Introduce yourself and greet the user. Say: 'Hi, I'm Santé.' then ask your first question.",
                                         },
+                                    }
+                                )
+                            )
+                        elif self._phase == "ending" and self._goodbye_sent:
+                            # Goodbye session.update confirmed — fire closing message
+                            logger.info(
+                                "[bridge] Goodbye session.updated — firing closing message"
+                            )
+                            await self.openai_ws.send(
+                                json.dumps(
+                                    {
+                                        "type": "response.create",
+                                        "response": {"modalities": ["text", "audio"]},
                                     }
                                 )
                             )
@@ -543,8 +476,40 @@ class CallBridge:
                                 "[bridge] Read aloud session.updated — triggering first sentence"
                             )
                             self._phase_transitioning = False
+                            # Inject a silent AI text item to "close" the last user
+                            # conversation turn. Without this, the model sees the user's
+                            # final conversation answer as unanswered and responds to it
+                            # conversationally instead of starting the read-aloud phase.
                             await self.openai_ws.send(
-                                json.dumps({"type": "response.create"})
+                                json.dumps(
+                                    {
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "message",
+                                            "role": "assistant",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": "[starting read aloud]",
+                                                }
+                                            ],
+                                        },
+                                    }
+                                )
+                            )
+                            await self.openai_ws.send(
+                                json.dumps(
+                                    {
+                                        "type": "response.create",
+                                        "response": {
+                                            "modalities": ["text", "audio"],
+                                            "instructions": (
+                                                "Say ONLY and EXACTLY these words, nothing more: "
+                                                "'Thanks — now repeat after me: The sun is shining today.'"
+                                            ),
+                                        },
+                                    }
+                                )
                             )
 
                     elif event_type == "session.created":
@@ -578,16 +543,54 @@ class CallBridge:
                         "input_audio_transcription": {"model": "whisper-1"},
                         "turn_detection": {
                             "type": "server_vad",
-                            "threshold": 0.85,
+                            "threshold": 0.75,
                             "prefix_padding_ms": 300,
-                            "silence_duration_ms": 1500,
-                            "create_response": True,
+                            "silence_duration_ms": 900,
+                            "create_response": False,  # sentences triggered manually per turn
                         },
                     },
                 }
             )
         )
         # response.create is fired in the session.updated handler once confirmed.
+
+    async def _trigger_goodbye(self) -> None:
+        """Save audio+transcripts and send the closing 'you may hang up' message."""
+        if self._goodbye_sent:
+            return
+        self._goodbye_sent = True
+        logger.info(
+            "[bridge] Read aloud done — saving audio+transcripts, sending closing message"
+        )
+        self.audio_path = _save_mulaw_as_wav(self._mulaw_chunks, self.call_sid)
+        if self._audio_paths is not None:
+            if self.audio_path:
+                self._audio_paths[self.call_sid] = self.audio_path
+                logger.info(f"[bridge] Audio path registered early: {self.audio_path}")
+            self._audio_paths[f"{self.call_sid}:ai_transcript"] = " ".join(
+                self._ai_transcript_parts
+            )
+            self._audio_paths[f"{self.call_sid}:user_transcript"] = " ".join(
+                self._user_transcript_parts
+            )
+        await self.openai_ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
+        await self.openai_ws.send(
+            json.dumps(
+                {
+                    "type": "session.update",
+                    "session": {
+                        "turn_detection": None,
+                        "instructions": (
+                            "Say exactly and only: "
+                            "'Thank you for completing the assessment. "
+                            "You may hang up now.' "
+                            "Do not say anything else."
+                        ),
+                    },
+                }
+            )
+        )
+        # response.create fires in session.updated once the goodbye instructions are confirmed.
 
     async def cleanup(self) -> None:
         """Close the OpenAI WebSocket connection gracefully."""

@@ -6,12 +6,11 @@ Steps:
      Falls back to dummy data if audio is unavailable or analysis fails.
   2. Generate a PDF report (fpdf2).
   3. Save PDF to backend/static/reports/{call_sid}.pdf (served at /static/reports/).
-  4. Send MMS via Twilio with the PDF attached.
+  4. Email the PDF report to the configured recipient.
 """
 
 import asyncio
 import logging
-import os
 import random
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,7 @@ from dotenv import load_dotenv
 # (The FastAPI server calls load_dotenv() in main.py, but the RQ worker is a separate process.)
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from services.sms_sender import send_sms_report
+from services.email_sender import send_email_report
 
 logger = logging.getLogger(__name__)
 
@@ -74,22 +73,18 @@ def process_call(
         user_transcript=user_transcript,
     )
 
-    backend_base_url = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
-    report_url = f"{backend_base_url}/static/reports/{call_sid}.pdf"
-
-    sms_result = send_sms_report(
-        to_phone=caller_phone,
-        report_url=report_url,
+    email_result = send_email_report(
+        pdf_path=str(pdf_path),
         call_sid=call_sid,
+        caller_phone=caller_phone,
     )
 
-    logger.info(f"[worker] Done for {call_sid}: sms_sid={sms_result.get('sid')}")
+    logger.info(f"[worker] Done for {call_sid}: email={email_result.get('status')}")
 
     return {
         "call_sid": call_sid,
         "pdf_path": str(pdf_path),
-        "report_url": report_url,
-        "sms_result": sms_result,
+        "email_result": email_result,
         "analysis_results": analysis_results,
     }
 
