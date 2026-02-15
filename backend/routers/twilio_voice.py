@@ -31,6 +31,10 @@ router = APIRouter(prefix="/twilio", tags=["twilio"])
 # In-memory store: call_sid -> audio WAV path (set by bridge when call ends)
 _audio_paths: dict[str, str] = {}
 
+# Track call SIDs that have already been enqueued to prevent duplicate jobs
+# from the second Twilio status callback that arrives ~3s after the first.
+_enqueued_sids: set[str] = set()
+
 # Twilio sends the status POST almost simultaneously with the WS stop frame.
 # We wait up to this many seconds for the bridge to write the audio path before
 # giving up and enqueuing with audio_path=None.
@@ -114,6 +118,13 @@ async def twilio_status_callback(
     )
 
     if CallStatus in terminal_statuses:
+        # Twilio sends two status POSTs for the same call (one when the stream
+        # ends, one when the call record is finalized). Only process the first.
+        if CallSid in _enqueued_sids:
+            logger.info(f"[twilio] Duplicate status callback for {CallSid} — ignoring")
+            return Response(content="", status_code=204)
+        _enqueued_sids.add(CallSid)
+
         try:
             # Wait briefly for the bridge's stop handler to write the audio path.
             # The WS stop frame and this POST arrive almost simultaneously.
@@ -125,11 +136,19 @@ async def twilio_status_callback(
                     break
                 await asyncio.sleep(0.1)
 
+            ai_transcript = _audio_paths.pop(f"{CallSid}:ai_transcript", "") or ""
+            user_transcript = _audio_paths.pop(f"{CallSid}:user_transcript", "") or ""
+
             if audio_path:
                 logger.info(f"[twilio] Audio path ready for {CallSid}: {audio_path}")
             else:
                 logger.warning(
                     f"[twilio] No audio path for {CallSid} after waiting {_AUDIO_PATH_WAIT_SECS}s"
+                )
+            if ai_transcript or user_transcript:
+                logger.info(
+                    f"[twilio] Transcript captured — AI: {len(ai_transcript)} chars, "
+                    f"User: {len(user_transcript)} chars"
                 )
 
             job = enqueue_call_analysis(
@@ -138,6 +157,8 @@ async def twilio_status_callback(
                 call_status=CallStatus,
                 duration_seconds=int(CallDuration or 0),
                 audio_path=audio_path,
+                ai_transcript=ai_transcript,
+                user_transcript=user_transcript,
             )
             logger.info(f"[twilio] Enqueued analysis job: {job.id} for call {CallSid}")
         except Exception as exc:

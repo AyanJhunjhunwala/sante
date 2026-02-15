@@ -29,6 +29,8 @@ def enqueue_call_analysis(
     call_status: str,
     duration_seconds: int,
     audio_path: str | None = None,
+    ai_transcript: str = "",
+    user_transcript: str = "",
 ) -> Job:
     """
     Enqueue a call analysis job on the 'calls' queue.
@@ -44,6 +46,8 @@ def enqueue_call_analysis(
             "call_status": call_status,
             "duration_seconds": duration_seconds,
             "audio_path": audio_path,
+            "ai_transcript": ai_transcript,
+            "user_transcript": user_transcript,
         },
         job_timeout=600,  # 10 min — RunPod cold starts can take up to 5 min
         result_ttl=3600,
