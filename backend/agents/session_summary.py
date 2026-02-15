@@ -41,6 +41,7 @@ def generate_session_report(
         phonemes=phonemes,
         dys_detect=dys_detect,
         acoustic_features=acoustic,
+        duration_seconds=duration_seconds,
         quality=quality,
     )
 
@@ -51,7 +52,6 @@ def generate_session_report(
                 "title": flag["title"],
                 "level": flag["level"],
                 "score": flag["score"],
-                "confidence": flag["confidence"],
             }
             for flag in top_flags
         ],
@@ -123,7 +123,7 @@ def export_session_report_pdf(*, report: dict[str, Any]) -> str:
             pdf,
             _latin1(
                 f"- {item.get('title', 'Flag')}: {item.get('level', 'inconclusive')} "
-                f"(score {item.get('score', 0)}, confidence {item.get('confidence', 0)}%)"
+                f"(score {item.get('score', 0)})"
             ),
             6,
         )
@@ -138,7 +138,7 @@ def export_session_report_pdf(*, report: dict[str, Any]) -> str:
             pdf,
             _latin1(
                 f"{est.get('title', 'Estimate')} | {est.get('level', 'inconclusive')} | "
-                f"score {est.get('score', 0)} | confidence {est.get('confidence', 0)}%"
+                f"score {est.get('score', 0)}"
             ),
             6,
         )
@@ -230,6 +230,71 @@ Disfluencies: {len(flags)} flagged out of {len(dys_detect)} total
     return resp.choices[0].message.content or "Report generation returned empty."
 
 
+def generate_ai_report_sections(*, report: dict[str, Any]) -> dict[str, str]:
+    """Generate a sectioned AI summary for streamlined UI rendering."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        return _fallback_ai_sections(report)
+
+    content = report.get("content", {})
+    acoustics = content.get("acoustic_features") or {}
+    phonemes = content.get("phonemes", [])
+    dys_detect = content.get("dys_detect", [])
+    quality = report.get("quality", {})
+    estimates = report.get("estimates", [])
+
+    flags = [d for d in dys_detect if d.get("dysfluency_type") != "normal"]
+    top_estimates = sorted(estimates, key=lambda x: x.get("score", 0), reverse=True)[:4]
+
+    data_block = {
+        "duration_seconds": report.get("duration_seconds", 0),
+        "quality": quality,
+        "phoneme_count": len(phonemes),
+        "disfluency_count": len(flags),
+        "top_estimates": top_estimates,
+        "acoustic_features": acoustics,
+        "transcription": (content.get("user_transcription") or "")[:900],
+    }
+
+    client = OpenAI(api_key=api_key)
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a speech-language pathology research assistant. "
+                        "Return JSON only with keys: overview, voice_quality, fluency, "
+                        "prosody_rhythm, exploratory_risk_signals, confidence_limitations, follow_up. "
+                        "Each value must be 1-2 short sentences (max 45 words), specific and plain-language. "
+                        "Do not diagnose. Use cautious language and mention uncertainty/noise where relevant."
+                    ),
+                },
+                {"role": "user", "content": str(data_block)},
+            ],
+            temperature=0.35,
+            max_tokens=1400,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content or ""
+        parsed = _safe_parse_json(raw)
+        required = [
+            "overview",
+            "voice_quality",
+            "fluency",
+            "prosody_rhythm",
+            "exploratory_risk_signals",
+            "confidence_limitations",
+            "follow_up",
+        ]
+        if not isinstance(parsed, dict) or not all(k in parsed for k in required):
+            return _fallback_ai_sections(report)
+        return {k: str(parsed.get(k, "")).strip() for k in required}
+    except Exception:
+        return _fallback_ai_sections(report)
+
+
 def generate_chat_reply(*, report: dict[str, Any], message: str) -> str:
     msg = message.lower().strip()
     if not msg:
@@ -257,7 +322,7 @@ def generate_chat_reply(*, report: dict[str, Any], message: str) -> str:
         quality = report.get("quality", {})
         return (
             f"Quality grade: {quality.get('grade', 'N/A')} "
-            f"(score {quality.get('score', 0)}%, confidence cap {quality.get('confidence_cap', 0)}%). "
+            f"(score {quality.get('score', 0)}%). "
             f"{quality.get('summary', 'No quality summary available.')}"
         )
 
@@ -266,7 +331,7 @@ def generate_chat_reply(*, report: dict[str, Any], message: str) -> str:
         if not estimates:
             return "No estimate categories available in this summary."
         lines = [
-            f"{e.get('title')}: {e.get('level')} (score {e.get('score')}, confidence {e.get('confidence')}%)"
+            f"{e.get('title')}: {e.get('level')} (score {e.get('score')})"
             for e in estimates[:6]
         ]
         return "Exploratory estimates:\n" + "\n".join(lines)
@@ -313,7 +378,7 @@ def _compute_quality(
 
     if phoneme_count < 35:
         score -= 18
-        penalties.append("Low phoneme coverage reduces language-pattern confidence.")
+        penalties.append("Low phoneme coverage reduces language-pattern certainty.")
         noise_likelihood += 0.1
 
     if not acoustic_features:
@@ -325,11 +390,11 @@ def _compute_quality(
         loudness_std = float(acoustic_features.get("loudness_std", 0.0))
         jitter = float(acoustic_features.get("jitter", 0.0))
 
-        if hnr < 4.5:
+        if hnr < 6.0:
             score -= 18
             penalties.append("Low harmonic-to-noise ratio suggests background/noise contamination.")
             noise_likelihood += 0.25
-        elif hnr < 8.0:
+        elif hnr < 10.0:
             score -= 10
             penalties.append("Borderline harmonic-to-noise ratio; quality may be mixed.")
             noise_likelihood += 0.15
@@ -352,16 +417,12 @@ def _compute_quality(
 
     if score >= 85:
         grade = "A"
-        confidence_cap = 92
     elif score >= 70:
         grade = "B"
-        confidence_cap = 82
     elif score >= 55:
         grade = "C"
-        confidence_cap = 70
     else:
         grade = "D"
-        confidence_cap = 58
 
     summary = (
         "Data quality is high; exploratory interpretations are likely stable."
@@ -373,7 +434,6 @@ def _compute_quality(
         "score": round(score, 1),
         "grade": grade,
         "noise_likelihood": round(noise_likelihood, 2),
-        "confidence_cap": confidence_cap,
         "summary": summary,
         "penalties": penalties,
     }
@@ -385,6 +445,7 @@ def _build_estimates(
     phonemes: list[str],
     dys_detect: list[dict[str, Any]],
     acoustic_features: dict[str, Any] | None,
+    duration_seconds: float,
     quality: dict[str, Any],
 ) -> list[dict[str, Any]]:
     dys_flags = [d for d in dys_detect if d.get("dysfluency_type") != "normal"]
@@ -400,27 +461,124 @@ def _build_estimates(
 
     words = [w for w in user_transcription.strip().split() if w]
     word_count = len(words)
-    confidence_cap = int(quality.get("confidence_cap", 70))
+    unique_word_count = len({w.lower() for w in words})
+    lexical_diversity = (unique_word_count / max(1, word_count)) if word_count else 0.0
+    phoneme_count = len(phonemes)
+    quality_score = float(quality.get("score", 50.0))
+    noise_likelihood = float(quality.get("noise_likelihood", 0.35))
     low_quality = quality.get("grade") in {"C", "D"}
+
+    def clamp01(value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+    def norm(value: float, lo: float, hi: float) -> float:
+        if hi <= lo:
+            return 0.0
+        return clamp01((value - lo) / (hi - lo))
+
+    acoustic_coverage = 1.0 if acoustic_features else 0.0
+    duration_coverage = norm(duration_seconds, 25.0, 90.0)
+    word_coverage = norm(word_count, 16.0, 75.0)
+    phoneme_coverage = norm(phoneme_count, 30.0, 145.0)
+    coverage = (acoustic_coverage + duration_coverage + word_coverage + phoneme_coverage) / 4.0
+
+    quality_trust = clamp01((quality_score / 100.0) * (1.0 - (0.65 * noise_likelihood)))
+    skepticism_scale = max(0.26, min(0.86, 0.34 + (0.52 * quality_trust) + (0.10 * coverage)))
+
+    pause_long = norm(pause_len, 0.55, 1.60)
+    slow_rate = norm(0.50 - speaking_rate, 0.0, 0.45)
+    low_voiced_rate = norm(0.20 - voiced_rate, 0.0, 0.20)
+    voiced_short = norm(0.19 - float((acoustic_features or {}).get("mean_voiced_length", 0.0)), 0.0, 0.19)
+    jitter_high = norm(jitter, 0.015, 0.060)
+    shimmer_high = norm(shimmer, 0.80, 2.80)
+    low_hnr = norm(4.5 - hnr, 0.0, 3.5)
+    loudness_volatility = norm(float((acoustic_features or {}).get("loudness_std", 0.0)), 0.40, 3.20)
+    low_loudness = norm(0.08 - float((acoustic_features or {}).get("loudness_mean", 0.0)), 0.0, 0.08)
+    prosody_flat = norm(0.26 - float((acoustic_features or {}).get("f0_std", 0.0)), 0.0, 0.26)
+    dys_pressure = clamp01((0.65 * dys_ratio) + (0.35 * norm(len(dys_flags), 2.0, 34.0)))
+    lexical_sparse = norm(30.0 - word_count, 0.0, 30.0)
+    lexical_repetitive = norm(0.56 - lexical_diversity, 0.0, 0.56)
+
+    context_penalty = (
+        (1.0 - duration_coverage) * 0.24
+        + (1.0 - phoneme_coverage) * 0.23
+        + (1.0 - word_coverage) * 0.18
+        + noise_likelihood * 0.19
+        + (1.0 - acoustic_coverage) * 0.13
+    )
+
+    low_risk_coherence = clamp01(
+        ((1.0 - pause_long) * 0.18)
+        + ((1.0 - slow_rate) * 0.16)
+        + ((1.0 - dys_pressure) * 0.14)
+        + ((1.0 - jitter_high) * 0.14)
+        + ((1.0 - shimmer_high) * 0.10)
+        + ((1.0 - low_hnr) * 0.10)
+        + ((1.0 - low_voiced_rate) * 0.06)
+        + (coverage * 0.06)
+        + ((1.0 - noise_likelihood) * 0.06)
+    )
+    data_stability = clamp01((quality_trust * 0.58) + (coverage * 0.42))
+
+    def skeptical_score(
+        signals: list[tuple[str, float, float]],
+        *,
+        confound_penalty: float = 0.0,
+    ) -> int:
+        weighted_sum = sum(value * weight for _, value, weight in signals)
+        weight_total = sum(weight for _, _, weight in signals) or 1.0
+        base = weighted_sum / weight_total
+        agreement = sum(1 for _, value, _ in signals if value >= 0.55) / max(1, len(signals))
+        spread = max(value for _, value, _ in signals) - min(value for _, value, _ in signals)
+
+        score = base * 100.0
+        score *= skepticism_scale
+        score *= 0.70 + (0.30 * agreement)
+        score *= 1.0 - (0.20 * spread)
+        score *= 1.0 - (0.34 * context_penalty)
+        score *= 1.0 - (0.28 * clamp01(confound_penalty))
+        score *= 1.0 - (0.24 * low_risk_coherence * data_stability)
+
+        return int(max(1, min(99, round(score))))
+
+    def calibrate_signal_score(signal_key: str, raw_score: int) -> int:
+        score = float(raw_score)
+        attenuation_context = clamp01((low_risk_coherence * 0.62) + (data_stability * 0.38))
+
+        if signal_key == "intoxication_slur":
+            score -= 3.0 + (3.5 * attenuation_context)
+            if score < 24:
+                score *= 0.94
+        elif signal_key == "aphasia_pattern":
+            score -= 2.0 + (2.8 * attenuation_context)
+            if score < 18:
+                score *= 0.92
+        elif signal_key == "voice_strain_resp":
+            score -= 4.0 + (4.2 * attenuation_context)
+            if score < 40:
+                score *= 0.90
+        elif signal_key == "cognitive_fatigue":
+            score -= 2.0 + (2.4 * attenuation_context)
+            if score < 16:
+                score *= 0.93
+
+        return int(max(1, min(99, round(score))))
 
     def mk_estimate(
         *,
         key: str,
         title: str,
         score: float,
-        base_confidence: float,
         evidence: list[str],
         limitations: list[str],
         suggestion: str,
     ) -> dict[str, Any]:
         bounded_score = int(max(1, min(99, round(score))))
-        confidence = int(max(20, min(confidence_cap, round(base_confidence))))
         level = _score_to_level(bounded_score, low_quality)
         return {
             "key": key,
             "title": title,
             "score": bounded_score,
-            "confidence": confidence,
             "level": level,
             "is_estimate": True,
             "evidence": evidence,
@@ -428,53 +586,128 @@ def _build_estimates(
             "suggestion": suggestion,
         }
 
-    depression_score = 25 + (pause_len * 18) + ((0.45 - speaking_rate) * 35) + (dys_ratio * 22)
-    depression_conf = 62 + (word_count / 20)
+    depression_score = calibrate_signal_score(
+        "depression_risk",
+        skeptical_score(
+        [
+            ("long_pauses", pause_long, 0.30),
+            ("slow_rate", slow_rate, 0.24),
+            ("dys_pressure", dys_pressure, 0.18),
+            ("prosody_flat", prosody_flat, 0.16),
+            ("low_loudness", low_loudness, 0.12),
+        ],
+        confound_penalty=(0.55 * noise_likelihood) + (0.25 * jitter_high),
+        ),
+    )
     depression_evidence = [
         f"Mean pause length {pause_len:.2f}s",
         f"Speaking-rate proxy {speaking_rate:.2f} peaks/s",
         f"Disfluency ratio {dys_ratio:.2f}",
+        f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
     ]
     depression_limits = ["Speech-only estimate; mood state can be situational."]
 
-    aphasia_score = 20 + (dys_ratio * 55) + (max(0.0, 0.14 - voiced_rate) * 180)
-    aphasia_conf = 58 + (len(phonemes) / 25)
+    aphasia_score = calibrate_signal_score(
+        "aphasia_pattern",
+        skeptical_score(
+        [
+            ("dys_pressure", dys_pressure, 0.34),
+            ("low_voiced_rate", low_voiced_rate, 0.22),
+            ("pause_long", pause_long, 0.14),
+            ("lexical_sparse", lexical_sparse, 0.15),
+            ("lexical_repetitive", lexical_repetitive, 0.15),
+        ],
+        confound_penalty=(0.45 * noise_likelihood) + (0.20 * slow_rate),
+        ),
+    )
     aphasia_evidence = [
-        f"Phoneme coverage {len(phonemes)} tokens",
+        f"Phoneme coverage {phoneme_count} tokens",
         f"Flagged disfluencies {len(dys_flags)}",
         f"Voiced segment rate {voiced_rate:.2f}/s",
+        f"Lexical diversity {lexical_diversity:.2f}",
     ]
     aphasia_limits = ["Cannot subtype aphasia from this short speech sample."]
 
-    age_score = 38 + (max(0.0, 170 - f0) * 0.18) + (jitter * 280)
-    age_conf = 57 + (len(phonemes) / 30)
-    age_evidence = [f"F0 mean {f0:.2f} st", f"Jitter {jitter:.3f}"]
+    low_f0_proxy = norm(170.0 - f0, 0.0, 120.0)
+    age_score = calibrate_signal_score(
+        "age_gender_proxy",
+        skeptical_score(
+        [
+            ("f0_proxy", low_f0_proxy, 0.48),
+            ("jitter_high", jitter_high, 0.22),
+            ("voiced_short", voiced_short, 0.12),
+            ("prosody_flat", prosody_flat, 0.18),
+        ],
+        confound_penalty=(0.55 * noise_likelihood) + (0.20 * (1.0 - acoustic_coverage)),
+        ),
+    )
+    age_evidence = [
+        f"F0 mean {f0:.2f} st",
+        f"Jitter {jitter:.3f}",
+        f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
+    ]
     age_limits = ["Only estimates broad vocal age band, not chronological age."]
 
-    intox_score = 18 + (jitter * 520) + (shimmer * 13) + (pause_len * 16)
-    intox_conf = 60 + (word_count / 30)
+    intox_score = calibrate_signal_score(
+        "intoxication_slur",
+        skeptical_score(
+        [
+            ("jitter_high", jitter_high, 0.30),
+            ("shimmer_high", shimmer_high, 0.24),
+            ("pause_long", pause_long, 0.18),
+            ("slow_rate", slow_rate, 0.14),
+            ("dys_pressure", dys_pressure, 0.14),
+        ],
+        confound_penalty=(0.55 * noise_likelihood) + (0.30 * prosody_flat),
+        ),
+    )
     intox_evidence = [
         f"Jitter {jitter:.3f}",
         f"Shimmer {shimmer:.3f} dB",
         f"Mean pause length {pause_len:.2f}s",
+        f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
     ]
     intox_limits = ["Medication, fatigue, and microphone clipping can mimic this pattern."]
 
-    fatigue_score = 24 + (pause_len * 14) + (max(0.0, 0.35 - speaking_rate) * 42) + (dys_ratio * 20)
-    fatigue_conf = 64 + (word_count / 25)
+    fatigue_score = calibrate_signal_score(
+        "cognitive_fatigue",
+        skeptical_score(
+        [
+            ("pause_long", pause_long, 0.30),
+            ("slow_rate", slow_rate, 0.24),
+            ("prosody_flat", prosody_flat, 0.16),
+            ("dys_pressure", dys_pressure, 0.15),
+            ("low_loudness", low_loudness, 0.15),
+        ],
+        confound_penalty=(0.35 * noise_likelihood) + (0.20 * shimmer_high),
+        ),
+    )
     fatigue_evidence = [
         f"Speech pacing proxy {speaking_rate:.2f} peaks/s",
         f"Pause duration {pause_len:.2f}s",
         f"Disfluency ratio {dys_ratio:.2f}",
+        f"Lexical diversity {lexical_diversity:.2f}",
     ]
     fatigue_limits = ["Single-session fatigue score is highly context-dependent."]
 
-    strain_score = 22 + (max(0.0, 10.0 - hnr) * 4.2) + (shimmer * 8) + (jitter * 320)
-    strain_conf = 66 + (word_count / 35)
+    strain_score = calibrate_signal_score(
+        "voice_strain_resp",
+        skeptical_score(
+        [
+            ("low_hnr", low_hnr, 0.33),
+            ("shimmer_high", shimmer_high, 0.22),
+            ("jitter_high", jitter_high, 0.18),
+            ("voiced_short", voiced_short, 0.14),
+            ("loudness_volatility", loudness_volatility, 0.13),
+        ],
+        confound_penalty=(0.50 * noise_likelihood) + (0.20 * (1.0 - acoustic_coverage)),
+        ),
+    )
     strain_evidence = [
         f"HNR {hnr:.2f} dB",
         f"Shimmer {shimmer:.3f} dB",
         f"Jitter {jitter:.3f}",
+        f"Loudness variability {float((acoustic_features or {}).get('loudness_std', 0.0)):.3f}",
     ]
     strain_limits = ["Breathing pattern cannot be directly measured from this sample."]
 
@@ -483,55 +716,49 @@ def _build_estimates(
             key="depression_risk",
             title="Mood / Depression Risk Signal",
             score=depression_score,
-            base_confidence=depression_conf,
             evidence=depression_evidence,
             limitations=depression_limits,
-            suggestion="Track trend across multiple days and pair with self-reported mood scales.",
+            suggestion="Run this check across multiple sessions and watch for a rising mood-risk trend.",
         ),
         mk_estimate(
             key="aphasia_pattern",
             title="Aphasia-like Language Pattern Flag",
             score=aphasia_score,
-            base_confidence=aphasia_conf,
             evidence=aphasia_evidence,
             limitations=aphasia_limits,
-            suggestion="If persistent, run structured language tasks and formal aphasia batteries.",
+            suggestion="If this stays elevated, run structured language testing with an SLP.",
         ),
         mk_estimate(
             key="age_gender_proxy",
             title="Perceived Vocal Age / Gender Proxy",
             score=age_score,
-            base_confidence=age_conf,
             evidence=age_evidence,
             limitations=age_limits,
-            suggestion="Use only as demographic context; avoid identity or eligibility decisions.",
+            suggestion="Use this as a voice-profile baseline and compare against future sessions.",
         ),
         mk_estimate(
             key="intoxication_slur",
             title="Slurred Speech / Intoxication Likelihood",
             score=intox_score,
-            base_confidence=intox_conf,
             evidence=intox_evidence,
             limitations=intox_limits,
-            suggestion="Confirm with behavioral checks and contextual history before acting.",
+            suggestion="Treat this as a high-priority clarity alert and confirm with immediate follow-up checks.",
         ),
         mk_estimate(
             key="cognitive_fatigue",
             title="Cognitive Load / Fatigue Proxy",
             score=fatigue_score,
-            base_confidence=fatigue_conf,
             evidence=fatigue_evidence,
             limitations=fatigue_limits,
-            suggestion="Repeat under controlled conditions and compare with baseline sessions.",
+            suggestion="Retest after rest and compare directly to your baseline session.",
         ),
         mk_estimate(
             key="voice_strain_resp",
             title="Voice Strain / Respiratory Effort Indicator",
             score=strain_score,
-            base_confidence=strain_conf,
             evidence=strain_evidence,
             limitations=strain_limits,
-            suggestion="Consider hydration, rest, and ENT/SLP follow-up if trend worsens.",
+            suggestion="Reduce vocal load now and schedule follow-up if this remains elevated.",
         ),
     ]
 
@@ -597,3 +824,66 @@ def _split_long_tokens(text: str, max_token_len: int = 28) -> str:
         parts = [token[i : i + max_token_len] for i in range(0, len(token), max_token_len)]
         chunks.append(" ".join(parts))
     return "".join(chunks)
+
+
+def _fallback_ai_sections(report: dict[str, Any]) -> dict[str, str]:
+    content = report.get("content", {})
+    acoustics = content.get("acoustic_features") or {}
+    quality = report.get("quality", {})
+    estimates = report.get("estimates", [])
+    flags = sorted(estimates, key=lambda x: x.get("score", 0), reverse=True)[:3]
+
+    jitter = float(acoustics.get("jitter", 0.0))
+    shimmer = float(acoustics.get("shimmer_db", 0.0))
+    hnr = float(acoustics.get("hnr", 0.0))
+    pause = float(acoustics.get("mean_pause_length", 0.0))
+    rate = float(acoustics.get("speaking_rate", 0.0))
+    dys = [d for d in content.get("dys_detect", []) if d.get("dysfluency_type") != "normal"]
+
+    flag_text = ", ".join(f.get("title", "flag") for f in flags) if flags else "no high-priority flags"
+    quality_grade = quality.get("grade", "N/A")
+    quality_score = quality.get("score", 0)
+    noise_pct = round(float(quality.get("noise_likelihood", 0)) * 100)
+
+    return {
+        "overview": (
+            f"This session produced a {quality_grade}-grade signal profile ({quality_score}% quality) with "
+            f"about {noise_pct}% estimated background-noise likelihood. Top exploratory markers were {flag_text}."
+        ),
+        "voice_quality": (
+            f"Voice stability metrics show jitter at {jitter:.3f}, shimmer at {shimmer:.3f} dB, and HNR at {hnr:.2f} dB. "
+            "Lower HNR with elevated shimmer can reflect either vocal strain or noisy capture conditions."
+        ),
+        "fluency": (
+            f"Disfluency detection flagged {len(dys)} events in this sample. "
+            "Prioritize repeat-session consistency over one-time counts."
+        ),
+        "prosody_rhythm": (
+            f"Prosodic timing proxies show speaking rate near {rate:.2f} peaks/s with mean pauses around {pause:.2f}s. "
+            "A structured retest with matched prompts helps separate baseline rhythm from temporary load effects."
+        ),
+        "exploratory_risk_signals": (
+            "Exploratory risk categories prioritize sensitivity and may over-call in noisy settings. "
+            "Treat top categories as follow-up hypotheses, not standalone outcomes."
+        ),
+        "confidence_limitations": (
+            f"Uncertainty is constrained by data quality ({quality_grade}) and environmental noise ({noise_pct}% estimated impact). "
+            "Single-session speech biomarkers are probabilistic and should be replicated under controlled conditions."
+        ),
+        "follow_up": (
+            "Repeat a short protocol in a quieter room with the same microphone position and prompts. "
+            "Track quality grade, risk ordering, and pause/voice-stability trends over time."
+        ),
+    }
+
+
+def _safe_parse_json(text: str) -> dict[str, Any] | None:
+    import json
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        return None
+    return None

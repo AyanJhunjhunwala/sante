@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from agents.session_summary import (
     export_session_report_pdf,
     generate_ai_report,
+    generate_ai_report_sections,
     generate_chat_reply,
     generate_session_report,
 )
@@ -63,6 +64,12 @@ async def api_session_summary_chat(payload: SessionSummaryChatRequest) -> JSONRe
 async def api_generate_report(payload: GenerateReportRequest) -> JSONResponse:
     narrative = generate_ai_report(report=payload.report)
     return JSONResponse({"report": narrative})
+
+
+@router.post("/report-structured")
+async def api_generate_report_structured(payload: GenerateReportRequest) -> JSONResponse:
+    sections = generate_ai_report_sections(report=payload.report)
+    return JSONResponse({"sections": sections})
 
 
 @router.post("/export-pdf")

@@ -190,6 +190,27 @@ export async function fetchAIReport(
   return data.report || "No report generated.";
 }
 
+/** Generate sectioned AI summary narrative for streamlined report rendering. */
+export async function fetchStructuredAIReport(
+  report: SummaryReport,
+): Promise<Record<string, string>> {
+  const res = await fetch(`${BACKEND_URL}/api/session-summary/report-structured`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(
+      (err as { detail?: string }).detail || "Structured report generation failed",
+    );
+  }
+
+  const data = (await res.json()) as { sections?: Record<string, string> };
+  return data.sections || {};
+}
+
 /** Chat with the summary AI about a report. */
 export async function fetchSummaryChatReply(
   report: SummaryReport,

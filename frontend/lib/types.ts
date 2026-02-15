@@ -70,7 +70,6 @@ export interface SummaryQuality {
   score: number;
   grade: "A" | "B" | "C" | "D";
   noise_likelihood: number;
-  confidence_cap: number;
   summary: string;
   penalties: string[];
 }
@@ -79,7 +78,6 @@ export interface SummaryEstimate {
   key: string;
   title: string;
   score: number;
-  confidence: number;
   level: string;
   is_estimate: boolean;
   evidence: string[];
@@ -91,13 +89,22 @@ export interface SummaryExecutiveItem {
   title: string;
   level: string;
   score: number;
-  confidence: number;
 }
 
 export interface SummaryExecutive {
   top_flags: SummaryExecutiveItem[];
   quality_statement: string;
   recommended_followups: string[];
+}
+
+export interface StructuredSummarySections {
+  overview?: string;
+  voice_quality?: string;
+  fluency?: string;
+  prosody_rhythm?: string;
+  exploratory_risk_signals?: string;
+  confidence_limitations?: string;
+  follow_up?: string;
 }
 
 export interface SummaryReport {

@@ -1,6 +1,10 @@
 import ScribbleWave from "@/components/landing/ScribbleWave";
-import ImpactCard from "@/components/landing/ImpactCard";
 import TypewriterTagline from "@/components/landing/TypewriterTagline";
+import SessionSummaryPanel from "@/components/summary/SessionSummaryPanel";
+import {
+  SUMMARY_PREVIEW_AI_SECTIONS,
+  SUMMARY_PREVIEW_REPORT,
+} from "@/lib/summaryPreviewData";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -100,35 +104,21 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Research impact */}
         <section style={{ marginBottom: "48px" }}>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: "14px",
+              background: "#ffffff",
+              borderRadius: "22px",
+              padding: "24px",
+              border: "1px solid var(--border)",
+              boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
             }}
           >
-            <ImpactCard
-              number="19×"
-              title="CAD voice-pattern association"
-              body="Observed in Mayo Clinic research when patients discussed emotionally charged experiences."
-              source="Mayo Clinic"
-              href="https://www.pfizer.com/news/articles/diagnosing_disease_by_voice"
-            />
-            <ImpactCard
-              number="3"
-              title="Core signal domains"
-              body="Neurological motor speech, cardiorespiratory strain, and stress-affect vocal markers."
-              source="Pfizer x MIT"
-              href="https://www.pfizer.com/news/articles/diagnosing_disease_by_voice"
-            />
-            <ImpactCard
-              number="1"
-              title="Short voice session"
-              body="A brief guided conversation can surface patterns often missed in casual listening."
-              source="NIH"
-              href="https://newsinhealth.nih.gov/2024/08/sound-check"
+            <SessionSummaryPanel
+              report={SUMMARY_PREVIEW_REPORT}
+              showCloseButton={false}
+              autoGenerateAI={false}
+              initialSections={SUMMARY_PREVIEW_AI_SECTIONS}
             />
           </div>
         </section>
@@ -152,6 +142,41 @@ export default function HomePage() {
             Santé is a research tool, not a medical device. Always consult a
             healthcare professional for medical advice.
           </p>
+
+          <div
+            style={{
+              marginTop: "12px",
+              fontSize: "10px",
+              color: "var(--text-dim)",
+              lineHeight: 1.6,
+            }}
+          >
+            <p style={{ margin: 0 }}>
+              Research context: voice biomarkers may reflect cardiometabolic, neurological, and stress-linked changes in speech.
+            </p>
+            <p style={{ margin: 0 }}>
+              Sources:
+              {" "}
+              <a
+                href="https://www.pfizer.com/news/articles/diagnosing_disease_by_voice"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: "2px" }}
+              >
+                Mayo Clinic / Pfizer feature
+              </a>
+              ,{" "}
+              <a
+                href="https://newsinhealth.nih.gov/2024/08/sound-check"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: "2px" }}
+              >
+                NIH News in Health
+              </a>
+              , and industry-academic voice diagnostics studies.
+            </p>
+          </div>
         </div>
       </div>
     </div>

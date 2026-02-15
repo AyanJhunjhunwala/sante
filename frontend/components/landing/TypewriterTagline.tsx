@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useRef } from "react";
 
-const PREFIX = "Your voice reveals ";
+const PREFIX = "Voice analysis for ";
 const SUFFIXES = [
-  "more than words",
-  "the health within",
-  "the science of you",
+  "stress trends",
+  "speech biomarkers",
+  "structured screening",
 ];
 
 const TYPING_SPEED = 90;       // ms per character typing
