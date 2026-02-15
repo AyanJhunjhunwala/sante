@@ -836,23 +836,23 @@ def _build_estimates(
 
     def calibrate_signal_score(signal_key: str, raw_score: int) -> int:
         score = float(raw_score)
-        attenuation_context = clamp01((low_risk_coherence * 0.62) + (data_stability * 0.38))
+        attenuation_context = clamp01((low_risk_coherence * 0.58) + (data_stability * 0.42))
 
         if signal_key == "intoxication_slur":
-            score -= 1.2 + (2.0 * attenuation_context)
-            if score < 20:
+            score -= 1.1 + (1.8 * attenuation_context)
+            if score < 18:
+                score *= 0.98
+        elif signal_key == "sick_tired_state":
+            score -= 1.0 + (1.5 * attenuation_context)
+            if score < 18:
                 score *= 0.97
+        elif signal_key == "stress_activation":
+            score -= 1.2 + (1.9 * attenuation_context)
+            if score < 15:
+                score *= 0.98
         elif signal_key == "aphasia_pattern":
-            score -= 1.0 + (1.6 * attenuation_context)
-            if score < 16:
-                score *= 0.96
-        elif signal_key == "voice_strain_resp":
-            score -= 1.8 + (2.2 * attenuation_context)
-            if score < 30:
-                score *= 0.95
-        elif signal_key == "cognitive_fatigue":
-            score -= 0.8 + (1.5 * attenuation_context)
-            if score < 14:
+            score -= 0.9 + (1.5 * attenuation_context)
+            if score < 15:
                 score *= 0.97
 
         return int(max(1, min(99, round(score))))
@@ -883,26 +883,10 @@ def _build_estimates(
             ),
         }
 
-    depression_score = calibrate_signal_score(
-        "depression_risk",
-        skeptical_score(
-        [
-            ("long_pauses", pause_long, 0.30),
-            ("slow_rate", slow_rate, 0.24),
-            ("dys_pressure", dys_pressure, 0.18),
-            ("prosody_flat", prosody_flat, 0.16),
-            ("low_loudness", low_loudness, 0.12),
-        ],
-        confound_penalty=(0.55 * noise_likelihood) + (0.25 * jitter_high),
-        ),
-    )
-    depression_evidence = [
-        f"Mean pause length {pause_len:.2f}s",
-        f"Speaking-rate proxy {speaking_rate:.2f} peaks/s",
-        f"Disfluency ratio {dys_ratio:.2f}",
-        f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
-    ]
-    depression_limits = ["Speech-only estimate; mood state can be situational."]
+    fast_rate = norm(speaking_rate, 1.22, 2.08)
+    prosody_dynamic = clamp01(1.0 - prosody_flat)
+    pressured_tempo = clamp01((0.50 * fast_rate) + (0.26 * loudness_volatility) + (0.24 * dys_pressure))
+    stable_articulation = clamp01(1.0 - ((0.56 * jitter_high) + (0.44 * shimmer_high)))
 
     aphasia_score = calibrate_signal_score(
         "aphasia_pattern",
@@ -925,98 +909,94 @@ def _build_estimates(
     ]
     aphasia_limits = ["Cannot subtype aphasia from this short speech sample."]
 
-    low_f0_proxy = norm(170.0 - f0, 0.0, 120.0)
-    age_score = calibrate_signal_score(
-        "age_gender_proxy",
-        skeptical_score(
-        [
-            ("f0_proxy", low_f0_proxy, 0.48),
-            ("jitter_high", jitter_high, 0.22),
-            ("voiced_short", voiced_short, 0.12),
-            ("prosody_flat", prosody_flat, 0.18),
-        ],
-        confound_penalty=(0.55 * noise_likelihood) + (0.20 * (1.0 - acoustic_coverage)),
-        ),
-    )
-    age_evidence = [
-        f"F0 mean {f0:.2f} st",
-        f"Jitter {jitter:.3f}",
-        f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
-    ]
-    age_limits = ["Only estimates broad vocal age band, not chronological age."]
-
     intox_score = calibrate_signal_score(
         "intoxication_slur",
         skeptical_score(
         [
-            ("jitter_high", jitter_high, 0.24),
-            ("shimmer_high", shimmer_high, 0.20),
+            ("jitter_high", jitter_high, 0.26),
+            ("shimmer_high", shimmer_high, 0.24),
             ("articulation_instability", articulation_instability, 0.22),
-            ("tempo_disruption", tempo_disruption, 0.18),
-            ("low_hnr", low_hnr, 0.16),
+            ("tempo_disruption", tempo_disruption, 0.16),
+            ("low_hnr", low_hnr, 0.12),
         ],
-        confound_penalty=(0.45 * noise_likelihood) + (0.20 * prosody_flat),
+        confound_penalty=(0.38 * noise_likelihood) + (0.16 * pressured_tempo) + (0.16 * energy_drop) + (0.14 * prosody_flat),
         ),
     )
     intox_evidence = [
         f"Jitter {jitter:.3f}",
         f"Shimmer {shimmer:.3f} dB",
-        f"Mean pause length {pause_len:.2f}s",
+        f"Articulation instability index {articulation_instability:.2f}",
         f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
     ]
-    intox_limits = ["Medication, fatigue, and microphone clipping can mimic this pattern."]
+    intox_limits = ["Sleep deprivation, stress, and microphone clipping can mimic this pattern."]
 
-    fatigue_score = calibrate_signal_score(
-        "cognitive_fatigue",
+    sick_tired_score = calibrate_signal_score(
+        "sick_tired_state",
         skeptical_score(
         [
-            ("tempo_disruption", tempo_disruption, 0.34),
-            ("energy_drop", energy_drop, 0.22),
-            ("prosody_flat", prosody_flat, 0.16),
-            ("dys_pressure", dys_pressure, 0.14),
-            ("low_loudness", low_loudness, 0.14),
+            ("energy_drop", energy_drop, 0.27),
+            ("tempo_disruption", tempo_disruption, 0.20),
+            ("slow_rate", slow_rate, 0.19),
+            ("low_hnr", low_hnr, 0.16),
+            ("prosody_flat", prosody_flat, 0.10),
+            ("low_loudness", low_loudness, 0.08),
         ],
-        confound_penalty=(0.30 * noise_likelihood) + (0.15 * shimmer_high),
+        confound_penalty=(0.30 * noise_likelihood) + (0.16 * fast_rate) + (0.14 * prosody_dynamic),
         ),
     )
-    fatigue_evidence = [
-        f"Speech pacing proxy {speaking_rate:.2f} peaks/s",
-        f"Pause duration {pause_len:.2f}s",
-        f"Disfluency ratio {dys_ratio:.2f}",
-        f"Lexical diversity {lexical_diversity:.2f}",
-    ]
-    fatigue_limits = ["Single-session fatigue score is highly context-dependent."]
-
-    strain_score = calibrate_signal_score(
-        "voice_strain_resp",
-        skeptical_score(
-        [
-            ("low_hnr", low_hnr, 0.30),
-            ("shimmer_high", shimmer_high, 0.20),
-            ("jitter_high", jitter_high, 0.16),
-            ("voiced_short", voiced_short, 0.14),
-            ("loudness_volatility", loudness_volatility, 0.12),
-            ("energy_drop", energy_drop, 0.08),
-        ],
-        confound_penalty=(0.45 * noise_likelihood) + (0.15 * (1.0 - acoustic_coverage)),
-        ),
-    )
-    strain_evidence = [
+    sick_tired_evidence = [
+        f"Energy-drop index {energy_drop:.2f}",
+        f"Mean pause length {pause_len:.2f}s",
         f"HNR {hnr:.2f} dB",
-        f"Shimmer {shimmer:.3f} dB",
-        f"Jitter {jitter:.3f}",
+        f"Prosody-flatness proxy {prosody_flat:.2f}",
+    ]
+    sick_tired_limits = ["Cannot separate respiratory causes from fatigue without clinical context."]
+
+    stress_score = calibrate_signal_score(
+        "stress_activation",
+        skeptical_score(
+        [
+            ("pressured_tempo", pressured_tempo, 0.27),
+            ("dys_pressure", dys_pressure, 0.25),
+            ("loudness_volatility", loudness_volatility, 0.24),
+            ("lexical_repetitive", lexical_repetitive, 0.14),
+            ("prosody_dynamic", prosody_dynamic, 0.10),
+        ],
+        confound_penalty=(0.45 * noise_likelihood) + (0.20 * articulation_instability) + (0.18 * energy_drop) + (0.14 * prosody_flat),
+        ),
+    )
+    stress_evidence = [
+        f"Speech-rate proxy {speaking_rate:.2f} peaks/s",
+        f"Pressured-tempo index {pressured_tempo:.2f}",
+        f"Disfluency ratio {dys_ratio:.2f}",
         f"Loudness variability {float((acoustic_features or {}).get('loudness_std', 0.0)):.3f}",
     ]
-    strain_limits = ["Breathing pattern cannot be directly measured from this sample."]
+    stress_limits = ["High arousal can also reflect urgency, excitement, or speaking style."]
 
     return [
         mk_estimate(
-            key="depression_risk",
-            title="Mood / Depression Risk Signal",
-            score=depression_score,
-            evidence=depression_evidence,
-            limitations=depression_limits,
-            suggestion="Run this check across multiple sessions and watch for a rising mood-risk trend.",
+            key="intoxication_slur",
+            title="Intoxicated Speech Pattern Signal",
+            score=intox_score,
+            evidence=intox_evidence,
+            limitations=intox_limits,
+            suggestion="If this remains elevated, verify safety context and repeat with a matched setup promptly.",
+        ),
+        mk_estimate(
+            key="sick_tired_state",
+            title="Sick / Tired Voice Pattern Signal",
+            score=sick_tired_score,
+            evidence=sick_tired_evidence,
+            limitations=sick_tired_limits,
+            suggestion="Track this trend across sessions and compare to your personal baseline after rest/recovery.",
+        ),
+        mk_estimate(
+            key="stress_activation",
+            title="Stress Activation Speech Signal",
+            score=stress_score,
+            evidence=stress_evidence,
+            limitations=stress_limits,
+            suggestion="Use brief repeat checks during calmer conditions to confirm whether the pattern is persistent.",
         ),
         mk_estimate(
             key="aphasia_pattern",
@@ -1025,38 +1005,6 @@ def _build_estimates(
             evidence=aphasia_evidence,
             limitations=aphasia_limits,
             suggestion="If this stays elevated, run structured language testing with an SLP.",
-        ),
-        mk_estimate(
-            key="age_gender_proxy",
-            title="Perceived Vocal Age / Gender Proxy",
-            score=age_score,
-            evidence=age_evidence,
-            limitations=age_limits,
-            suggestion="Use this as a voice-profile baseline and compare against future sessions.",
-        ),
-        mk_estimate(
-            key="intoxication_slur",
-            title="Slurred Speech / Intoxication Likelihood",
-            score=intox_score,
-            evidence=intox_evidence,
-            limitations=intox_limits,
-            suggestion="Treat this as a high-priority clarity alert and confirm with immediate follow-up checks.",
-        ),
-        mk_estimate(
-            key="cognitive_fatigue",
-            title="Cognitive Load / Fatigue Proxy",
-            score=fatigue_score,
-            evidence=fatigue_evidence,
-            limitations=fatigue_limits,
-            suggestion="Retest after rest and compare directly to your baseline session.",
-        ),
-        mk_estimate(
-            key="voice_strain_resp",
-            title="Voice Strain / Respiratory Effort Indicator",
-            score=strain_score,
-            evidence=strain_evidence,
-            limitations=strain_limits,
-            suggestion="Reduce vocal load now and schedule follow-up if this remains elevated.",
         ),
     ]
 

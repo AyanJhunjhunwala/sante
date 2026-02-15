@@ -28,6 +28,20 @@ Our clinical/research direction is aligned with the recent Berkeley DysfluentWFS
 3. Start backend from `backend/`
 4. Start frontend from `frontend/`
 
+## Lightweight audio mode calibration
+
+Use this to quickly score mode-labeled uploads (Baseline, Sick, Tired, Stressed, Drunk) without adding heavy tooling.
+
+1. Place samples in `frontend/public/audio-tests`
+2. Run from repo root:
+	- `C:/code/sante/.venv/Scripts/python.exe backend/scripts/audio_mode_calibration.py`
+3. Review output JSON:
+	- `frontend/public/audio-tests/calibration-summary.json`
+
+Optional:
+- Enable phoneme model calls (slower):
+  - `C:/code/sante/.venv/Scripts/python.exe backend/scripts/audio_mode_calibration.py --use-phonemes`
+
 ## Architecture
 
 - System design and data flows: [Architecture](docs/ARCHITECTURE.md)

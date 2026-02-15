@@ -109,10 +109,7 @@ export default function SessionSummaryPanel({
     [report.estimates],
   );
 
-  const topSignals = useMemo(
-    () => topEstimates.filter((estimate) => estimate.key !== "age_gender_proxy"),
-    [topEstimates],
-  );
+  const topSignals = useMemo(() => topEstimates, [topEstimates]);
 
   const insightSignalCards = useMemo(
     () => buildSignalCards(topSignals, aiSections),
@@ -561,33 +558,33 @@ function buildSignalCards(
       id: "intoxication",
       key: "intoxication_slur",
       rank: 1,
-      label: "Intoxication",
+      label: "Intoxicated",
       section: "exploratory_risk_signals",
-      calculation: "Weighted evidence from jitter, shimmer, pause length, speech rate, and disfluency pressure, then reduced by quality/noise/coverage skepticism penalties.",
+      calculation: "Weighted evidence from jitter, shimmer, articulation instability, tempo disruption, and low HNR, then reduced by quality/noise/coverage skepticism penalties.",
+    },
+    {
+      id: "sick-tired",
+      key: "sick_tired_state",
+      rank: 2,
+      label: "Sick / Tired",
+      section: "voice_quality",
+      calculation: "Weighted evidence from energy drop, tempo disruption, low HNR, flat prosody, and low loudness, then reduced by quality/noise/coverage skepticism penalties.",
+    },
+    {
+      id: "stressed",
+      key: "stress_activation",
+      rank: 3,
+      label: "Stressed",
+      section: "prosody_rhythm",
+      calculation: "Weighted evidence from pressured tempo, disfluency pressure, loudness volatility, tempo disruption, and lexical repetition, then reduced by quality/noise/coverage skepticism penalties.",
     },
     {
       id: "aphasia",
       key: "aphasia_pattern",
-      rank: 2,
+      rank: 4,
       label: "Aphasia",
       section: "fluency",
-      calculation: "Weighted evidence from disfluency pressure, voiced-rate suppression, pauses, lexical sparsity/repetition, then reduced by quality/noise/coverage skepticism penalties.",
-    },
-    {
-      id: "respiratory",
-      key: "voice_strain_resp",
-      rank: 3,
-      label: "Respiratory Illness",
-      section: "voice_quality",
-      calculation: "Weighted evidence from low HNR, shimmer, jitter, voiced-segment shortening, and loudness instability, then reduced by quality/noise/coverage skepticism penalties.",
-    },
-    {
-      id: "tiredness",
-      key: "cognitive_fatigue",
-      rank: 4,
-      label: "Tiredness",
-      section: "prosody_rhythm",
-      calculation: "Weighted evidence from pause burden, slowed pacing, flatter prosody, disfluency pressure, and low loudness, then reduced by quality/noise/coverage skepticism penalties.",
+      calculation: "Weighted evidence from disfluency pressure, voiced-rate suppression, tempo disruption, lexical sparsity, and lexical repetition, then reduced by quality/noise/coverage skepticism penalties.",
     },
   ];
 
