@@ -133,7 +133,7 @@ class CallBridge:
                 },
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "input_audio_transcription": {"model": "whisper-1"},
+                "input_audio_transcription": {"model": "whisper-1", "language": "en"},
                 "voice": "shimmer",
                 "instructions": instructions or PHONE_CONVERSATION_PROMPT,
                 "modalities": ["text", "audio"],
@@ -540,7 +540,7 @@ class CallBridge:
                     "type": "session.update",
                     "session": {
                         "instructions": PHONE_READ_ALOUD_PROMPT,
-                        "input_audio_transcription": {"model": "whisper-1"},
+                        "input_audio_transcription": {"model": "whisper-1", "language": "en"},
                         "turn_detection": {
                             "type": "server_vad",
                             "threshold": 0.75,

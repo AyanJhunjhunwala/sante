@@ -42,3 +42,6 @@ frontend/node_modules/
 # uv / Python backend
 backend/.venv/
 backend/__pycache__/
+
+# Frontend audio test artifacts
+frontend/public/audio-tests/**

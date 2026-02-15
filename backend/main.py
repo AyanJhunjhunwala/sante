@@ -5,15 +5,23 @@ FastAPI backend: token minting, stress analysis upload, and real-time WS analysi
 
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routers import analysis, summary, tokens, twilio_voice, websocket
+from routers import analysis, benchmark, summary, tokens, twilio_voice, websocket
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent
+
+# Load env files from both backend/.env and repository root/.env.
+# This keeps local dev stable regardless of whether uvicorn is launched from
+# the backend folder or the repo root.
+load_dotenv(BASE_DIR / ".env", override=False)
+load_dotenv(ROOT_DIR / ".env", override=False)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +54,7 @@ app.add_middleware(
 app.include_router(tokens.router)
 app.include_router(analysis.router)
 app.include_router(summary.router)
+app.include_router(benchmark.router)
 app.include_router(websocket.router)
 app.include_router(twilio_voice.router)
 

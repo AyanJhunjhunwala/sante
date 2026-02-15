@@ -17,6 +17,7 @@ export function useWebRTC() {
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const lastReadAloudResponseCreateAtRef = useRef(0);
+  const processedItemIdsRef = useRef<Set<string>>(new Set());
 
   // ── Realtime event handler ──────────────────────────────────────────────
 
@@ -44,6 +45,10 @@ export function useWebRTC() {
           break;
 
         case "conversation.item.input_audio_transcription.completed": {
+          const itemId = (ev.item_id as string) || "";
+          if (itemId && processedItemIdsRef.current.has(itemId)) break;
+          if (itemId) processedItemIdsRef.current.add(itemId);
+
           const t =
             (ev.transcript as string) ||
             ((ev as { content_part?: { transcript?: string } }).content_part
@@ -70,13 +75,18 @@ export function useWebRTC() {
 
         case "conversation.item.done": {
           const item = ev.item as {
+            id?: string;
             role?: string;
             content?: { transcript?: string; text?: string }[];
           };
+          const doneItemId = item?.id || "";
+          if (doneItemId && processedItemIdsRef.current.has(doneItemId)) break;
+
           if (item?.role === "user" && Array.isArray(item.content)) {
             for (const part of item.content) {
               const t = part.transcript || part.text || "";
               if (t.trim()) {
+                if (doneItemId) processedItemIdsRef.current.add(doneItemId);
                 appendUserTurn(t);
                 appendUserWords(t);
                 break;

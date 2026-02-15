@@ -27,6 +27,10 @@ import AnalysisSidebar from "@/components/sidebar/AnalysisSidebar";
 import ResultsModal from "@/components/sidebar/ResultsModal";
 
 const ACTIVE_SEGMENT: Segment = "conversation";
+const ACTION_FORWARD_OPT_IN =
+  process.env.NEXT_PUBLIC_ACTION_FORWARD_OPT_IN === "true";
+const ACTION_FORWARD_RECIPIENT =
+  process.env.NEXT_PUBLIC_ACTION_FORWARD_RECIPIENT || "";
 
 /** Count finalized assistant turns that belong to the given phase.
  *  For the conversation phase, the first turn is the greeting and doesn't count. */
@@ -185,6 +189,8 @@ export default function SessionPage() {
         detected_phonemes: detectedPhonemes,
         detected_dys_detect: detectedDysDetect,
         acoustic_features: acousticFeatures,
+        forward_opt_in: ACTION_FORWARD_OPT_IN,
+        forward_recipient: ACTION_FORWARD_RECIPIENT,
       });
       store.getState().setSummaryReport(report);
     } catch (err) {

@@ -1,0 +1,318 @@
+{
+  "benchmark_id": "run-20260215-fair-1b",
+  "total_runs": 40,
+  "providers": {
+    "sante-analysis": {
+      "provider": "sante-analysis",
+      "run_count": 20,
+      "latency_ms": {
+        "first_token": {
+          "count": 20,
+          "mean": 48.9,
+          "median": 32.849,
+          "p90": 102.947,
+          "p95": 112.926
+        },
+        "first_audio": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "turn_roundtrip": {
+          "count": 20,
+          "mean": 244.498,
+          "median": 164.246,
+          "p90": 514.736,
+          "p95": 564.631
+        },
+        "session_total": {
+          "count": 20,
+          "mean": 244.498,
+          "median": 164.246,
+          "p90": 514.736,
+          "p95": 564.631
+        }
+      },
+      "cost": {
+        "total_usd": 0.0,
+        "usd_per_session": 0.0,
+        "usd_per_minute": 0.0,
+        "input_tokens_total": 0,
+        "output_tokens_total": 180,
+        "tokens_total": 180
+      },
+      "reliability": {
+        "turn_failure_rate": 0.0,
+        "timeout_rate": 0.0,
+        "interruption_recovery_rate": null,
+        "turn_count_total": 20,
+        "turn_failures_total": 0,
+        "timeouts_total": 0
+      },
+      "quality": {
+        "disfluency_ratio": {
+          "count": 20,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "disfluency_count": {
+          "count": 20,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "phoneme_coverage": {
+          "count": 20,
+          "mean": 0.7,
+          "median": 0.7,
+          "p90": 0.7,
+          "p95": 0.7
+        },
+        "speech_rate_wpm": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "noise_likelihood": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "quality_grade_distribution": {
+          "ok": 20
+        }
+      },
+      "output": {
+        "instruction_compliance": {
+          "count": 20,
+          "mean": 0.8,
+          "median": 0.8,
+          "p90": 0.8,
+          "p95": 0.8
+        },
+        "output_richness": {
+          "count": 20,
+          "mean": 0.804,
+          "median": 0.804,
+          "p90": 0.804,
+          "p95": 0.804
+        },
+        "domain_signal_coverage": {
+          "count": 20,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "numeric_evidence_count": {
+          "count": 20,
+          "mean": 4.0,
+          "median": 4.0,
+          "p90": 4.0,
+          "p95": 4.0
+        },
+        "output_word_count": {
+          "count": 20,
+          "mean": 19.0,
+          "median": 19.0,
+          "p90": 19.0,
+          "p95": 19.0
+        }
+      }
+    },
+    "chatgpt-realtime": {
+      "provider": "chatgpt-realtime",
+      "run_count": 20,
+      "latency_ms": {
+        "first_token": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "first_audio": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "turn_roundtrip": {
+          "count": 20,
+          "mean": 114.984,
+          "median": 82.42,
+          "p90": 130.238,
+          "p95": 180.369
+        },
+        "session_total": {
+          "count": 20,
+          "mean": 114.984,
+          "median": 82.42,
+          "p90": 130.238,
+          "p95": 180.369
+        }
+      },
+      "cost": {
+        "total_usd": 0.0,
+        "usd_per_session": 0.0,
+        "usd_per_minute": 0.0,
+        "input_tokens_total": 0,
+        "output_tokens_total": 0,
+        "tokens_total": 0
+      },
+      "reliability": {
+        "turn_failure_rate": 1.0,
+        "timeout_rate": 0.0,
+        "interruption_recovery_rate": null,
+        "turn_count_total": 20,
+        "turn_failures_total": 20,
+        "timeouts_total": 0
+      },
+      "quality": {
+        "disfluency_ratio": {
+          "count": 20,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "disfluency_count": {
+          "count": 20,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "phoneme_coverage": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "speech_rate_wpm": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "noise_likelihood": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "quality_grade_distribution": {
+          "poor": 20
+        }
+      },
+      "output": {
+        "instruction_compliance": {
+          "count": 20,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "output_richness": {
+          "count": 20,
+          "mean": 0.457,
+          "median": 0.457,
+          "p90": 0.457,
+          "p95": 0.457
+        },
+        "domain_signal_coverage": {
+          "count": 20,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "numeric_evidence_count": {
+          "count": 20,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "output_word_count": {
+          "count": 20,
+          "mean": 36.0,
+          "median": 36.0,
+          "p90": 36.0,
+          "p95": 36.0
+        }
+      }
+    }
+  },
+  "comparison": {
+    "baseline_provider": "sante-analysis",
+    "candidate_provider": "chatgpt-realtime",
+    "delta": {
+      "turn_roundtrip_ms_median": -81.826,
+      "first_audio_ms_median": null,
+      "session_total_ms_median": -81.826,
+      "usd_per_session": 0.0,
+      "turn_failure_rate": 1.0,
+      "disfluency_ratio_median": 1.0,
+      "phoneme_coverage_median": null,
+      "speech_rate_wpm_median": null,
+      "instruction_compliance_median": 0.2,
+      "output_richness_median": -0.347,
+      "domain_signal_coverage_median": -1.0,
+      "numeric_evidence_count_median": -3.0
+    }
+  },
+  "skipped_providers": {},
+  "fairness_assessment": {
+    "baseline_provider": "sante-analysis",
+    "candidate_provider": "chatgpt-realtime",
+    "metrics": {
+      "instruction_compliance": {
+        "baseline_median": 0.8,
+        "candidate_median": 1.0,
+        "delta": 0.2,
+        "margin": 0.35,
+        "status": "within-margin"
+      },
+      "output_richness": {
+        "baseline_median": 0.804,
+        "candidate_median": 0.457,
+        "delta": -0.347,
+        "margin": 0.35,
+        "status": "within-margin"
+      },
+      "domain_signal_coverage": {
+        "baseline_median": 1.0,
+        "candidate_median": 0.0,
+        "delta": -1.0,
+        "margin": 0.5,
+        "status": "below-margin"
+      },
+      "numeric_evidence_count": {
+        "baseline_median": 4.0,
+        "candidate_median": 1.0,
+        "delta": -3.0,
+        "margin": 4.0,
+        "status": "within-margin"
+      }
+    },
+    "summary": {
+      "within_margin_count": 3,
+      "below_margin_count": 1,
+      "above_margin_count": 0
+    }
+  }
+}

@@ -29,7 +29,15 @@ export async function fetchEphemeralToken(
       }
     }
 
-    throw new Error(detail || `Token fetch failed (${res.status})`);
+    const fallback = detail || `Token fetch failed (${res.status})`;
+    const isMissingApiKey = /openai api key not configured/i.test(fallback);
+    if (isMissingApiKey) {
+      throw new Error(
+        `${fallback}. Add OPENAI_API_KEY to backend/.env (or repo root .env), then restart the backend server.`,
+      );
+    }
+
+    throw new Error(fallback);
   }
   const data = await res.json();
   const key = data.value ?? data.client_secret?.value;
@@ -61,6 +69,53 @@ export async function analyzePhonemes(
     );
   }
   return res.json();
+}
+
+/** Upload full session audio to the transcription endpoint. */
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "recording.webm");
+
+  const res = await fetch(`${BACKEND_URL}/api/analyze/transcript`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = (err as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) {
+      throw new Error(detail);
+    }
+
+    const detailObj = detail as {
+      message?: unknown;
+      request_id?: unknown;
+    };
+    const message =
+      typeof detailObj?.message === "string" && detailObj.message.trim()
+        ? detailObj.message
+        : "Transcription failed";
+    const requestId =
+      typeof detailObj?.request_id === "string" && detailObj.request_id.trim()
+        ? ` (request: ${detailObj.request_id})`
+        : "";
+    throw new Error(`${message}${requestId}`);
+  }
+
+  const data = (await res.json()) as {
+    transcript?: string;
+    status?: string;
+    request_id?: string;
+  };
+  const transcript = (data.transcript || "").trim();
+  if (data.status !== "ok" || !transcript) {
+    throw new Error(
+      `No speech transcript detected from uploaded audio${data.request_id ? ` (request: ${data.request_id})` : ""}.`,
+    );
+  }
+
+  return transcript;
 }
 
 /** Upload audio blob to the stress analysis endpoint. */
@@ -127,6 +182,8 @@ export async function fetchSessionSummary(payload: {
   detected_phonemes?: string[];
   detected_dys_detect?: DysfluencyEntry[];
   acoustic_features?: Record<string, number> | null;
+  forward_opt_in?: boolean;
+  forward_recipient?: string;
 }): Promise<SummaryReport> {
   const res = await fetch(`${BACKEND_URL}/api/session-summary`, {
     method: "POST",
@@ -188,6 +245,27 @@ export async function fetchAIReport(
   }
   const data = (await res.json()) as { report: string };
   return data.report || "No report generated.";
+}
+
+/** Generate sectioned AI summary narrative for streamlined report rendering. */
+export async function fetchStructuredAIReport(
+  report: SummaryReport,
+): Promise<Record<string, string>> {
+  const res = await fetch(`${BACKEND_URL}/api/session-summary/report-structured`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(
+      (err as { detail?: string }).detail || "Structured report generation failed",
+    );
+  }
+
+  const data = (await res.json()) as { sections?: Record<string, string> };
+  return data.sections || {};
 }
 
 /** Chat with the summary AI about a report. */

@@ -10,10 +10,12 @@ Protocol:
 
 import json
 import logging
+import uuid
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from services.audio_analyzer import analyze_chunk
+from services.benchmarking import append_run
 from services.session_manager import session_manager
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,44 @@ async def analysis_ws(
 
                 elif msg_type == "end_session":
                     summary = session_manager.get_summary(session_id)
+
+                    benchmark_id = str(data.get("benchmark_id") or "").strip()
+                    if benchmark_id:
+                        provider = str(data.get("provider") or "sante-realtime")
+                        run_id = str(data.get("run_id") or f"ws_{uuid.uuid4().hex}")
+                        session_state = session_manager.get_session(session_id)
+                        transcript = session_state.transcript if session_state else []
+                        turn_count = len(
+                            [
+                                t
+                                for t in transcript
+                                if getattr(t, "role", "") == "user"
+                                and getattr(t, "text", "").strip()
+                            ]
+                        )
+                        session_total_ms = summary.get("duration_seconds", 0.0) * 1000
+
+                        try:
+                            append_run(
+                                {
+                                    "benchmark_id": benchmark_id,
+                                    "provider": provider,
+                                    "run_id": run_id,
+                                    "session_total_ms": session_total_ms,
+                                    "turn_count": turn_count,
+                                    "metadata": {
+                                        "session_id": session_id,
+                                        "segment": summary.get("segment"),
+                                        "audio_bytes": summary.get("audio_bytes"),
+                                        "transcript_turns": summary.get("transcript_turns"),
+                                    },
+                                }
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                f"[WS] Failed benchmark logging for {session_id}: {exc}"
+                            )
+
                     await websocket.send_json(
                         {
                             "type": "session_complete",

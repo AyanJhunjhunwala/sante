@@ -7,8 +7,9 @@ export default function LiveTranscriptPanel() {
   const conversationLog = useSessionStore((s) => s.conversationLog);
   const sessionPhase = useSessionStore((s) => s.sessionPhase);
 
-  // Show last 3-4 turns
-  const recentTurns = conversationLog.slice(-4);
+  // Ensure turns are in sequence order, then take last 3-4
+  const sorted = [...conversationLog].sort((a, b) => a.id - b.id);
+  const recentTurns = sorted.slice(-4);
 
   const phaseLabel =
     sessionPhase === "conversation" ? "Conversation" : "Read Aloud";

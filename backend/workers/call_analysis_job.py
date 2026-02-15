@@ -38,6 +38,8 @@ def process_call(
     audio_path: str | None = None,
     ai_transcript: str = "",
     user_transcript: str = "",
+    forward_opt_in: bool = False,
+    forward_recipient: str = "",
 ) -> dict[str, Any]:
     """
     rq job entry point — called by the worker process.
@@ -64,7 +66,7 @@ def process_call(
         except Exception:
             pass
 
-    pdf_path = _generate_pdf_report(
+    pdf_path, report = _generate_pdf_report(
         call_sid=call_sid,
         caller_phone=caller_phone,
         duration_seconds=duration_seconds,
@@ -213,7 +215,7 @@ def _generate_pdf_report(
     analysis_results: dict[str, Any],
     ai_transcript: str = "",
     user_transcript: str = "",
-) -> Path:
+) -> tuple[Path, dict[str, Any] | None]:
     """
     Generate a PDF report using the session_summary agent (same as the web app).
     Saves to REPORTS_DIR/{call_sid}.pdf and returns the path.
@@ -249,7 +251,7 @@ def _generate_pdf_report(
         if export_path.exists() and export_path != out_path:
             export_path.rename(out_path)
         logger.info(f"[worker] PDF saved: {out_path}")
-        return out_path
+        return out_path, report
     except Exception as exc:
         logger.error(
             f"[worker] session_summary PDF failed for {call_sid}: {exc}, falling back to basic PDF"
@@ -258,7 +260,7 @@ def _generate_pdf_report(
             call_sid=call_sid,
             duration_seconds=duration_seconds,
             analysis_results=analysis_results,
-        )
+        ), None
 
 
 def _generate_basic_pdf(

@@ -70,7 +70,6 @@ export interface SummaryQuality {
   score: number;
   grade: "A" | "B" | "C" | "D";
   noise_likelihood: number;
-  confidence_cap: number;
   summary: string;
   penalties: string[];
 }
@@ -79,7 +78,6 @@ export interface SummaryEstimate {
   key: string;
   title: string;
   score: number;
-  confidence: number;
   level: string;
   is_estimate: boolean;
   evidence: string[];
@@ -91,13 +89,48 @@ export interface SummaryExecutiveItem {
   title: string;
   level: string;
   score: number;
-  confidence: number;
 }
 
 export interface SummaryExecutive {
   top_flags: SummaryExecutiveItem[];
   quality_statement: string;
   recommended_followups: string[];
+}
+
+export interface StructuredSummarySections {
+  overview?: string;
+  voice_quality?: string;
+  fluency?: string;
+  prosody_rhythm?: string;
+  exploratory_risk_signals?: string;
+  confidence_limitations?: string;
+  follow_up?: string;
+}
+
+export interface SummaryActionResult {
+  status: string;
+  reason?: string;
+  recipient?: string;
+  source?: string;
+  urgency?: "urgent" | "routine";
+  safety_category?: string;
+  safety_confidence?: number;
+  signal_score?: number;
+  threshold?: number;
+  error?: string;
+  send?: {
+    sid?: string | null;
+    status?: string;
+    error?: string | null;
+  };
+}
+
+export interface SummarySafetySignal {
+  category: string;
+  urgency: "urgent" | "routine";
+  confidence: number;
+  evidence_phrases: string[];
+  recommended_response: string;
 }
 
 export interface SummaryReport {
@@ -109,6 +142,9 @@ export interface SummaryReport {
   estimates?: SummaryEstimate[];
   executive_summary?: SummaryExecutive;
   limitations?: string[];
+  safety_signal?: SummarySafetySignal;
+  action_result?: SummaryActionResult;
+  safety_action_result?: SummaryActionResult | null;
   content: {
     user_transcription: string;
     ai_transcription: string;
