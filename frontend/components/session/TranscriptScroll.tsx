@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useSessionStore } from "@/store/sessionStore";
-import { extractAssistantSections } from "@/lib/transcriptSections";
+import { stripSectionPrefix } from "@/lib/transcriptSections";
 
 export default function TranscriptScroll() {
   const conversationLog = useSessionStore((s) => s.conversationLog);
@@ -13,6 +13,11 @@ export default function TranscriptScroll() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [conversationLog]);
+
+  // Detect index where the phase switches from "conversation" to "read_aloud"
+  const phaseSwitchIndex = conversationLog.findIndex(
+    (t) => t.phase === "read_aloud",
+  );
 
   return (
     <div
@@ -69,78 +74,107 @@ export default function TranscriptScroll() {
             The conversation will appear here...
           </div>
         ) : (
-          conversationLog.map((turn) => {
-            const sections =
-              turn.role === "assistant" ? extractAssistantSections(turn.text) : null;
+          conversationLog.map((turn, idx) => {
+            const displayText =
+              turn.role === "assistant"
+                ? stripSectionPrefix(turn.text)
+                : turn.text;
 
             return (
-              <div
-                key={turn.id}
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  alignItems: "flex-start",
-                  fontSize: "13px",
-                  lineHeight: 1.7,
-                  padding: "8px 12px",
-                  borderRadius: "10px",
-                  background: "var(--bg-white)",
-                  border: "1px solid var(--border-light)",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    paddingTop: "3px",
-                    minWidth: "44px",
-                    flexShrink: 0,
-                    color: turn.role === "user" ? "var(--blue)" : "var(--indigo)",
-                  }}
-                >
-                  {turn.role === "user" ? "You" : "Santé"}
-                </span>
-
-                <span
-                  style={{
-                    color: "var(--text-secondary)",
-                    opacity: turn.status === "draft" ? 0.7 : 1,
-                    transition: "opacity 0.2s ease",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                  }}
-                >
-                  {sections ? (
-                    <>
-                      <span>
-                        <strong>Conversation:</strong> {sections.conversation}
-                      </span>
-                      {sections.readAloud && (
-                        <span>
-                          <strong>Read Aloud:</strong> {sections.readAloud}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    turn.text
-                  )}
-                  {turn.status === "draft" && (
-                    <span
+              <div key={turn.id}>
+                {/* Phase divider */}
+                {idx === phaseSwitchIndex && phaseSwitchIndex > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      margin: "8px 0 18px",
+                    }}
+                  >
+                    <div
                       style={{
-                        display: "inline-block",
-                        width: "2px",
-                        height: "13px",
-                        background: "var(--indigo)",
-                        marginLeft: "2px",
-                        verticalAlign: "middle",
-                        animation: "blink 1s ease-in-out infinite",
+                        flex: 1,
+                        height: "1px",
+                        background: "var(--border-light)",
                       }}
                     />
-                  )}
-                </span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "1.5px",
+                        color: "var(--indigo)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Read Aloud
+                    </span>
+                    <div
+                      style={{
+                        flex: 1,
+                        height: "1px",
+                        background: "var(--border-light)",
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    fontSize: "13px",
+                    lineHeight: 1.7,
+                    padding: "8px 12px",
+                    borderRadius: "10px",
+                    background: "var(--bg-white)",
+                    border: "1px solid var(--border-light)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "1px",
+                      paddingTop: "3px",
+                      minWidth: "44px",
+                      flexShrink: 0,
+                      color:
+                        turn.role === "user"
+                          ? "var(--blue)"
+                          : "var(--indigo)",
+                    }}
+                  >
+                    {turn.role === "user" ? "You" : "Santé"}
+                  </span>
+
+                  <span
+                    style={{
+                      color: "var(--text-secondary)",
+                      opacity: turn.status === "draft" ? 0.7 : 1,
+                      transition: "opacity 0.2s ease",
+                    }}
+                  >
+                    {displayText}
+                    {turn.status === "draft" && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: "2px",
+                          height: "13px",
+                          background: "var(--indigo)",
+                          marginLeft: "2px",
+                          verticalAlign: "middle",
+                          animation: "blink 1s ease-in-out infinite",
+                        }}
+                      />
+                    )}
+                  </span>
+                </div>
               </div>
             );
           })

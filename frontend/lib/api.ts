@@ -144,6 +144,16 @@ export async function fetchSessionSummary(payload: {
   return (await res.json()) as SummaryReport;
 }
 
+/** Fetch Read Aloud phase instructions from backend. */
+export async function fetchReadAloudPrompt(): Promise<string> {
+  const res = await fetch(`/token/read-aloud-prompt`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch Read Aloud prompt (${res.status})`);
+  }
+  const data = await res.json();
+  return data.instructions;
+}
+
 /** Chat with the summary AI about a report. */
 export async function fetchSummaryChatReply(
   report: SummaryReport,

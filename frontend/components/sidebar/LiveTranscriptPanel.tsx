@@ -1,13 +1,17 @@
 "use client";
 
 import { useSessionStore } from "@/store/sessionStore";
-import { extractAssistantSections } from "@/lib/transcriptSections";
+import { stripSectionPrefix } from "@/lib/transcriptSections";
 
 export default function LiveTranscriptPanel() {
   const conversationLog = useSessionStore((s) => s.conversationLog);
+  const sessionPhase = useSessionStore((s) => s.sessionPhase);
 
   // Show last 3-4 turns
   const recentTurns = conversationLog.slice(-4);
+
+  const phaseLabel =
+    sessionPhase === "conversation" ? "Conversation" : "Read Aloud";
 
   return (
     <div
@@ -20,15 +24,37 @@ export default function LiveTranscriptPanel() {
     >
       <div
         style={{
-          fontSize: "10px",
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "1.5px",
-          color: "var(--text-muted)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           marginBottom: "10px",
         }}
       >
-        Live Transcript
+        <div
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "1.5px",
+            color: "var(--text-muted)",
+          }}
+        >
+          Live Transcript
+        </div>
+        <div
+          style={{
+            fontSize: "9px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "1px",
+            color: "var(--indigo)",
+            background: "rgba(99,102,241,0.08)",
+            padding: "2px 8px",
+            borderRadius: "6px",
+          }}
+        >
+          {phaseLabel}
+        </div>
       </div>
 
       {recentTurns.length === 0 ? (
@@ -44,13 +70,10 @@ export default function LiveTranscriptPanel() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {recentTurns.map((turn) => {
-            const sections =
-              turn.role === "assistant" ? extractAssistantSections(turn.text) : null;
-            const displayText = sections
-              ? sections.readAloud
-                ? `Conversation: ${sections.conversation} | Read Aloud: ${sections.readAloud}`
-                : `Conversation: ${sections.conversation}`
-              : turn.text;
+            const displayText =
+              turn.role === "assistant"
+                ? stripSectionPrefix(turn.text)
+                : turn.text;
 
             return (
               <div

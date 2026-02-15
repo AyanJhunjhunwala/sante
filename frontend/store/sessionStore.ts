@@ -5,6 +5,7 @@ import { devtools } from "zustand/middleware";
 import type {
   AnalysisResults,
   Segment,
+  SessionPhase,
   SpeechMetrics,
   StressScore,
   SummaryReport,
@@ -30,7 +31,11 @@ export interface SessionState {
   conversationLog: Turn[];
   turnSequence: number;
 
-  // Session timer
+  // Session phase tracking
+  sessionPhase: SessionPhase;
+  phaseStartTurnId: number; // turnSequence value when current phase started
+
+  // Session timer (safety fallback)
   sessionDeadline: number; // epoch ms, 0 = not started
   remainingMs: number;
 
@@ -67,6 +72,9 @@ export interface SessionActions {
   appendUserTurn: (text: string) => void;
   resetConversationLog: () => void;
 
+  // Phase
+  setSessionPhase: (phase: SessionPhase) => void;
+
   // Timer
   setSessionDeadline: (deadline: number) => void;
   tickTimer: () => void;
@@ -99,6 +107,8 @@ const initialState: SessionState = {
   userMutedBeforeAI: false,
   conversationLog: [],
   turnSequence: 0,
+  sessionPhase: "conversation",
+  phaseStartTurnId: 0,
   sessionDeadline: 0,
   remainingMs: 60_000,
   waveformData: [],
@@ -154,6 +164,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
             role: "assistant",
             text: delta,
             status: "draft",
+            phase: s.sessionPhase,
             createdAt: Date.now(),
           };
           return {
@@ -190,6 +201,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
             role: "user",
             text: trimmed,
             status: "final",
+            phase: s.sessionPhase,
             createdAt: Date.now(),
           };
           return {
@@ -199,6 +211,12 @@ export const useSessionStore = create<SessionState & SessionActions>()(
         }),
 
       resetConversationLog: () => set({ conversationLog: [], turnSequence: 0 }),
+
+      setSessionPhase: (sessionPhase) =>
+        set((s) => ({
+          sessionPhase,
+          phaseStartTurnId: s.turnSequence,
+        })),
 
       setSessionDeadline: (deadline) =>
         set({

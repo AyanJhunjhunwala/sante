@@ -6,7 +6,11 @@ export const SEGMENT_LABELS: Record<Segment, string> = {
 
 export const VALID_SEGMENTS: Segment[] = ["conversation"];
 
-export const SESSION_MAX_MS = 60_000; // 1 minute
+// Prompt counts per session phase
+export const CONVERSATION_PROMPT_COUNT = 5;
+export const READ_ALOUD_PROMPT_COUNT = 5;
+
+export const SESSION_MAX_MS = 300_000; // 5-minute safety fallback
 
 export const API_BASE = ""; // empty = same origin (Next.js rewrites proxy to :8000)
 

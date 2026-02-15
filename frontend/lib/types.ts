@@ -1,5 +1,7 @@
 export type Segment = "conversation";
 
+export type SessionPhase = "conversation" | "read_aloud";
+
 export type TurnRole = "user" | "assistant";
 
 export interface Turn {
@@ -7,6 +9,7 @@ export interface Turn {
   role: TurnRole;
   text: string;
   status: "draft" | "final";
+  phase: SessionPhase;
   createdAt: number;
 }
 

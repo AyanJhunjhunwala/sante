@@ -3,17 +3,19 @@
 interface VoiceOrbProps {
   aiSpeaking: boolean;
   isActive: boolean;
-  timerProgress: number; // 0-1
-  countdown: string;
+  phase: string;
+  currentPrompt: number;
+  totalPrompts: number;
 }
 
 export default function VoiceOrb({
   aiSpeaking,
   isActive,
-  timerProgress,
-  countdown,
+  phase,
+  currentPrompt,
+  totalPrompts,
 }: VoiceOrbProps) {
-  const timerDeg = timerProgress * 360;
+  const progressDeg = totalPrompts > 0 ? (currentPrompt / totalPrompts) * 360 : 0;
 
   const ringBorderColor = aiSpeaking
     ? "rgba(99,102,241,0.15)"
@@ -47,7 +49,7 @@ export default function VoiceOrb({
           justifyContent: "center",
         }}
       >
-        {/* Timer ring */}
+        {/* Progress ring */}
         {isActive && (
           <div
             style={{
@@ -55,7 +57,7 @@ export default function VoiceOrb({
               width: "188px",
               height: "188px",
               borderRadius: "50%",
-              background: `conic-gradient(var(--timer-color) ${timerDeg}deg, rgba(148,163,184,0.15) 0)`,
+              background: `conic-gradient(var(--timer-color) ${progressDeg}deg, rgba(148,163,184,0.15) 0)`,
               WebkitMask:
                 "radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px))",
               mask: "radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px))",
@@ -123,8 +125,10 @@ export default function VoiceOrb({
             boxShadow: orbShadow,
             zIndex: 2,
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
+            gap: "4px",
             transition: "background 0.4s ease, box-shadow 0.4s ease",
           }}
         >
@@ -139,10 +143,22 @@ export default function VoiceOrb({
           >
             Santé
           </span>
+          {isActive && (
+            <span
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "rgba(255,255,255,0.85)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {currentPrompt}/{totalPrompts}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Countdown */}
+      {/* Phase label */}
       {isActive && (
         <div
           style={{
@@ -150,10 +166,10 @@ export default function VoiceOrb({
             fontWeight: 600,
             color: "var(--text-muted)",
             letterSpacing: "0.5px",
-            fontVariantNumeric: "tabular-nums",
+            textTransform: "uppercase",
           }}
         >
-          {countdown}
+          {phase}
         </div>
       )}
     </div>

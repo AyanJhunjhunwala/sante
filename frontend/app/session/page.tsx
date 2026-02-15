@@ -7,9 +7,19 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
 import { useWaveform } from "@/hooks/useWaveform";
-import { analyzePhonemes, analyzeAcoustics, fetchSessionSummary } from "@/lib/api";
-import type { DysfluencyEntry, Segment } from "@/lib/types";
-import { SEGMENT_LABELS, SESSION_MAX_MS } from "@/lib/constants";
+import {
+  analyzePhonemes,
+  analyzeAcoustics,
+  fetchSessionSummary,
+  fetchReadAloudPrompt,
+} from "@/lib/api";
+import type { DysfluencyEntry, Segment, SessionPhase } from "@/lib/types";
+import {
+  SEGMENT_LABELS,
+  SESSION_MAX_MS,
+  CONVERSATION_PROMPT_COUNT,
+  READ_ALOUD_PROMPT_COUNT,
+} from "@/lib/constants";
 import VoiceOrb from "@/components/session/VoiceOrb";
 import OrbControls from "@/components/session/OrbControls";
 import TranscriptScroll from "@/components/session/TranscriptScroll";
@@ -18,11 +28,14 @@ import ResultsModal from "@/components/sidebar/ResultsModal";
 
 const ACTIVE_SEGMENT: Segment = "conversation";
 
-function formatRemainingTime(ms: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+/** Count finalized assistant turns that belong to the given phase. */
+function countPhasePrompts(
+  log: { role: string; status: string; phase: SessionPhase }[],
+  phase: SessionPhase,
+): number {
+  return log.filter(
+    (t) => t.role === "assistant" && t.status === "final" && t.phase === phase,
+  ).length;
 }
 
 export default function SessionPage() {
@@ -32,7 +45,8 @@ export default function SessionPage() {
   const connectionStatus = useSessionStore((s) => s.connectionStatus);
   const isMuted = useSessionStore((s) => s.isMuted);
   const aiSpeaking = useSessionStore((s) => s.aiSpeaking);
-  const remainingMs = useSessionStore((s) => s.remainingMs);
+  const sessionPhase = useSessionStore((s) => s.sessionPhase);
+  const conversationLog = useSessionStore((s) => s.conversationLog);
   const resultsStatus = useSessionStore((s) => s.resultsStatus);
 
   const webRTC = useWebRTC();
@@ -41,40 +55,43 @@ export default function SessionPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const waveform = useWaveform(canvasRef);
 
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
   const sessionEndedRef = useRef(false);
+  const phaseTransitioningRef = useRef(false);
 
-  const timerProgress = remainingMs / SESSION_MAX_MS;
+  // Compute prompt progress for whichever phase we're in
+  const currentPhaseCount =
+    sessionPhase === "conversation"
+      ? countPhasePrompts(conversationLog, "conversation")
+      : countPhasePrompts(conversationLog, "read_aloud");
+  const currentPhaseTotal =
+    sessionPhase === "conversation"
+      ? CONVERSATION_PROMPT_COUNT
+      : READ_ALOUD_PROMPT_COUNT;
 
   const endSession = useCallback(async () => {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
 
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    if (timerTimeoutRef.current) {
-      clearTimeout(timerTimeoutRef.current);
-      timerTimeoutRef.current = null;
+    if (safetyTimeoutRef.current) {
+      clearTimeout(safetyTimeoutRef.current);
+      safetyTimeoutRef.current = null;
     }
 
     store.getState().endSession();
     waveform.stop();
 
-    const conversationLog = store.getState().conversationLog;
-    const userTranscription = conversationLog
+    const log = store.getState().conversationLog;
+    const userTranscription = log
       .filter((t) => t.role === "user" && t.text)
       .map((t) => t.text)
       .join(" ");
-    const aiTranscription = conversationLog
+    const aiTranscription = log
       .filter((t) => t.role === "assistant" && t.text)
       .map((t) => t.text)
       .join(" ");
-    const firstTurnAt =
-      conversationLog.length > 0 ? conversationLog[0].createdAt : Date.now();
+    const firstTurnAt = log.length > 0 ? log[0].createdAt : Date.now();
     const durationSeconds = Math.max(0, (Date.now() - firstTurnAt) / 1000);
 
     const audioBlob = await audioRecorder.stopRecording();
@@ -121,10 +138,61 @@ export default function SessionPage() {
     } catch (err) {
       store
         .getState()
-        .setResultsError(err instanceof Error ? err.message : "Analysis failed");
+        .setResultsError(
+          err instanceof Error ? err.message : "Analysis failed",
+        );
     }
   }, [audioRecorder, store, webRTC, waveform, ws]);
 
+  // -----------------------------------------------------------------------
+  // Phase transition: watch finalized assistant turns
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (connectionStatus !== "active") return;
+    if (sessionEndedRef.current || phaseTransitioningRef.current) return;
+
+    const state = store.getState();
+    const phase = state.sessionPhase;
+
+    if (phase === "conversation") {
+      const count = countPhasePrompts(conversationLog, "conversation");
+      if (count >= CONVERSATION_PROMPT_COUNT) {
+        phaseTransitioningRef.current = true;
+        // Transition to Read Aloud phase
+        (async () => {
+          try {
+            const { instructions } = await fetchReadAloudPrompt().then(
+              (inst) => ({ instructions: inst }),
+            );
+            // Update AI instructions mid-session
+            webRTC.sendDataChannelMessage({
+              type: "session.update",
+              session: {
+                type: "realtime",
+                instructions,
+              },
+            });
+            // Trigger the AI to produce its first Read Aloud prompt
+            webRTC.sendDataChannelMessage({ type: "response.create" });
+            store.getState().setSessionPhase("read_aloud");
+          } catch (err) {
+            console.error("Failed to transition to Read Aloud phase:", err);
+          } finally {
+            phaseTransitioningRef.current = false;
+          }
+        })();
+      }
+    } else if (phase === "read_aloud") {
+      const count = countPhasePrompts(conversationLog, "read_aloud");
+      if (count >= READ_ALOUD_PROMPT_COUNT) {
+        endSession();
+      }
+    }
+  }, [conversationLog, connectionStatus, store, webRTC, endSession]);
+
+  // -----------------------------------------------------------------------
+  // Init session
+  // -----------------------------------------------------------------------
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
@@ -149,14 +217,8 @@ export default function SessionPage() {
         ws.connect(id, ACTIVE_SEGMENT);
       }
 
-      const deadline = Date.now() + SESSION_MAX_MS;
-      store.getState().setSessionDeadline(deadline);
-
-      timerIntervalRef.current = setInterval(() => {
-        store.getState().tickTimer();
-      }, 100);
-
-      timerTimeoutRef.current = setTimeout(() => {
+      // Safety fallback timeout (5 minutes)
+      safetyTimeoutRef.current = setTimeout(() => {
         endSession();
       }, SESSION_MAX_MS);
     };
@@ -165,8 +227,7 @@ export default function SessionPage() {
 
     return () => {
       if (!sessionEndedRef.current) {
-        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-        if (timerTimeoutRef.current) clearTimeout(timerTimeoutRef.current);
+        if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
         waveform.stop();
         webRTC.cleanup();
         ws.disconnect();
@@ -200,6 +261,9 @@ export default function SessionPage() {
 
   const isActive =
     connectionStatus === "active" || connectionStatus === "ending";
+
+  const phaseLabel =
+    sessionPhase === "conversation" ? "Conversation" : "Read Aloud";
 
   return (
     <div
@@ -271,8 +335,9 @@ export default function SessionPage() {
           <VoiceOrb
             aiSpeaking={aiSpeaking}
             isActive={isActive}
-            timerProgress={timerProgress}
-            countdown={formatRemainingTime(remainingMs)}
+            phase={phaseLabel}
+            currentPrompt={Math.min(currentPhaseCount, currentPhaseTotal)}
+            totalPrompts={currentPhaseTotal}
           />
 
           <p
