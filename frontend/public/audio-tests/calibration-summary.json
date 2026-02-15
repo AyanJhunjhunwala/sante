@@ -12,9 +12,9 @@
       "quality_score": 32.0,
       "noise_likelihood": 0.8,
       "scores": {
-        "intoxication_slur": 1,
+        "intoxication_slur": 2,
         "sick_tired_state": 1,
-        "stress_activation": 2,
+        "stress_activation": 7,
         "aphasia_pattern": 1
       },
       "dominant_signal": "stress_activation"
@@ -24,32 +24,32 @@
       "mode": "drunk",
       "status": "ok",
       "duration_seconds": 32.92,
-      "transcript_chars": 450,
+      "transcript_chars": 442,
       "quality_score": 32.0,
       "noise_likelihood": 0.8,
       "scores": {
-        "intoxication_slur": 1,
+        "intoxication_slur": 10,
         "sick_tired_state": 1,
-        "stress_activation": 2,
+        "stress_activation": 4,
         "aphasia_pattern": 1
       },
-      "dominant_signal": "stress_activation"
+      "dominant_signal": "intoxication_slur"
     },
     {
       "file": "Sick.m4a",
       "mode": "sick",
       "status": "ok",
       "duration_seconds": 40.34,
-      "transcript_chars": 431,
+      "transcript_chars": 429,
       "quality_score": 44.0,
       "noise_likelihood": 0.8,
       "scores": {
-        "intoxication_slur": 5,
-        "sick_tired_state": 3,
-        "stress_activation": 2,
+        "intoxication_slur": 2,
+        "sick_tired_state": 10,
+        "stress_activation": 1,
         "aphasia_pattern": 1
       },
-      "dominant_signal": "intoxication_slur"
+      "dominant_signal": "sick_tired_state"
     },
     {
       "file": "Stressed.m4a",
@@ -60,28 +60,28 @@
       "quality_score": 40.0,
       "noise_likelihood": 0.65,
       "scores": {
-        "intoxication_slur": 1,
+        "intoxication_slur": 4,
         "sick_tired_state": 1,
-        "stress_activation": 1,
+        "stress_activation": 12,
         "aphasia_pattern": 1
       },
-      "dominant_signal": "intoxication_slur"
+      "dominant_signal": "stress_activation"
     },
     {
       "file": "Tired.m4a",
       "mode": "tired",
       "status": "ok",
       "duration_seconds": 42.39,
-      "transcript_chars": 430,
+      "transcript_chars": 429,
       "quality_score": 52.0,
       "noise_likelihood": 0.65,
       "scores": {
-        "intoxication_slur": 5,
-        "sick_tired_state": 2,
-        "stress_activation": 2,
+        "intoxication_slur": 2,
+        "sick_tired_state": 11,
+        "stress_activation": 1,
         "aphasia_pattern": 1
       },
-      "dominant_signal": "intoxication_slur"
+      "dominant_signal": "sick_tired_state"
     }
   ],
   "assessments": [
@@ -101,52 +101,52 @@
     {
       "file": "Drunk.m4a",
       "mode": "drunk",
-      "dominant_signal": "stress_activation",
+      "dominant_signal": "intoxication_slur",
       "expected_dominant": "intoxication_slur",
-      "dominant_matches_expectation": false,
+      "dominant_matches_expectation": true,
       "deltas_vs_baseline": {
-        "intoxication_slur": 0,
+        "intoxication_slur": 8,
         "sick_tired_state": 0,
-        "stress_activation": 0,
+        "stress_activation": -3,
         "aphasia_pattern": 0
       }
     },
     {
       "file": "Sick.m4a",
       "mode": "sick",
-      "dominant_signal": "intoxication_slur",
+      "dominant_signal": "sick_tired_state",
       "expected_dominant": "sick_tired_state",
-      "dominant_matches_expectation": false,
+      "dominant_matches_expectation": true,
       "deltas_vs_baseline": {
-        "intoxication_slur": 4,
-        "sick_tired_state": 2,
-        "stress_activation": 0,
+        "intoxication_slur": 0,
+        "sick_tired_state": 9,
+        "stress_activation": -6,
         "aphasia_pattern": 0
       }
     },
     {
       "file": "Stressed.m4a",
       "mode": "stressed",
-      "dominant_signal": "intoxication_slur",
+      "dominant_signal": "stress_activation",
       "expected_dominant": "stress_activation",
-      "dominant_matches_expectation": false,
+      "dominant_matches_expectation": true,
       "deltas_vs_baseline": {
-        "intoxication_slur": 0,
+        "intoxication_slur": 2,
         "sick_tired_state": 0,
-        "stress_activation": -1,
+        "stress_activation": 5,
         "aphasia_pattern": 0
       }
     },
     {
       "file": "Tired.m4a",
       "mode": "tired",
-      "dominant_signal": "intoxication_slur",
+      "dominant_signal": "sick_tired_state",
       "expected_dominant": "sick_tired_state",
-      "dominant_matches_expectation": false,
+      "dominant_matches_expectation": true,
       "deltas_vs_baseline": {
-        "intoxication_slur": 4,
-        "sick_tired_state": 1,
-        "stress_activation": 0,
+        "intoxication_slur": 0,
+        "sick_tired_state": 10,
+        "stress_activation": -6,
         "aphasia_pattern": 0
       }
     }

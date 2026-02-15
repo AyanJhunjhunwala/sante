@@ -776,19 +776,21 @@ def _build_estimates(
     skepticism_scale = max(0.32, min(0.90, 0.40 + (0.46 * quality_trust) + (0.14 * coverage)))
 
     pause_long = norm(pause_len, 0.30, 0.95)
-    slow_rate = norm(1.35 - speaking_rate, 0.0, 0.85)
-    low_voiced_rate = norm(1.05 - voiced_rate, 0.0, 0.75)
-    voiced_short = norm(0.17 - float((acoustic_features or {}).get("mean_voiced_length", 0.0)), 0.0, 0.12)
-    jitter_high = norm(jitter, 0.015, 0.060)
-    shimmer_high = norm(shimmer, 0.80, 2.80)
-    low_hnr = norm(4.5 - hnr, 0.0, 3.5)
-    loudness_volatility = norm(float((acoustic_features or {}).get("loudness_std", 0.0)), 0.40, 3.20)
-    low_loudness = norm(0.08 - float((acoustic_features or {}).get("loudness_mean", 0.0)), 0.0, 0.08)
-    prosody_flat = norm(0.34 - float((acoustic_features or {}).get("f0_std", 0.0)), 0.0, 0.30)
+    short_pause = norm(0.30 - pause_len, 0.0, 0.18)
+    fast_rate = norm(speaking_rate, 3.55, 4.70)
+    slow_rate = norm(3.70 - speaking_rate, 0.0, 1.10)
+    low_voiced_rate = norm(2.15 - voiced_rate, 0.0, 0.80)
+    jitter_high = norm(jitter, 0.020, 0.040)
+    shimmer_high = norm(shimmer, 0.95, 1.35)
+    low_hnr = norm(4.9 - hnr, 0.0, 2.8)
+    loudness_volatility = norm(float((acoustic_features or {}).get("loudness_std", 0.0)), 0.40, 0.58)
+    high_loudness = norm(float((acoustic_features or {}).get("loudness_mean", 0.0)), 0.44, 0.70)
+    low_loudness = norm(0.46 - float((acoustic_features or {}).get("loudness_mean", 0.0)), 0.0, 0.22)
+    prosody_flat = norm(0.14 - float((acoustic_features or {}).get("f0_std", 0.0)), 0.0, 0.08)
     dys_pressure = clamp01((0.65 * dys_ratio) + (0.35 * norm(len(dys_flags), 2.0, 34.0)))
     lexical_sparse = norm(30.0 - word_count, 0.0, 30.0)
     lexical_repetitive = norm(0.56 - lexical_diversity, 0.0, 0.56)
-    tempo_disruption = clamp01((0.50 * pause_long) + (0.35 * slow_rate) + (0.15 * low_voiced_rate))
+    tempo_disruption = clamp01((0.44 * pause_long) + (0.34 * slow_rate) + (0.22 * low_voiced_rate))
     energy_drop = clamp01((0.55 * low_loudness) + (0.30 * loudness_volatility) + (0.15 * low_hnr))
     articulation_instability = clamp01((0.36 * jitter_high) + (0.32 * shimmer_high) + (0.32 * dys_pressure))
 
@@ -883,10 +885,7 @@ def _build_estimates(
             ),
         }
 
-    fast_rate = norm(speaking_rate, 1.22, 2.08)
-    prosody_dynamic = clamp01(1.0 - prosody_flat)
-    pressured_tempo = clamp01((0.50 * fast_rate) + (0.26 * loudness_volatility) + (0.24 * dys_pressure))
-    stable_articulation = clamp01(1.0 - ((0.56 * jitter_high) + (0.44 * shimmer_high)))
+    pressured_tempo = clamp01((0.42 * fast_rate) + (0.22 * short_pause) + (0.22 * dys_pressure) + (0.14 * loudness_volatility))
 
     aphasia_score = calibrate_signal_score(
         "aphasia_pattern",
@@ -913,19 +912,20 @@ def _build_estimates(
         "intoxication_slur",
         skeptical_score(
         [
-            ("jitter_high", jitter_high, 0.26),
-            ("shimmer_high", shimmer_high, 0.24),
-            ("articulation_instability", articulation_instability, 0.22),
-            ("tempo_disruption", tempo_disruption, 0.16),
-            ("low_hnr", low_hnr, 0.12),
+            ("slow_rate", slow_rate, 0.25),
+            ("short_pause", short_pause, 0.23),
+            ("high_loudness", high_loudness, 0.22),
+            ("articulation_instability", articulation_instability, 0.18),
+            ("jitter_high", jitter_high, 0.12),
         ],
-        confound_penalty=(0.38 * noise_likelihood) + (0.16 * pressured_tempo) + (0.16 * energy_drop) + (0.14 * prosody_flat),
+        confound_penalty=(0.34 * noise_likelihood) + (0.20 * pause_long) + (0.16 * low_loudness) + (0.12 * low_hnr),
         ),
     )
     intox_evidence = [
+        f"Short-pause index {short_pause:.2f}",
+        f"Slow-rate index {slow_rate:.2f}",
+        f"Loudness mean {float((acoustic_features or {}).get('loudness_mean', 0.0)):.3f}",
         f"Jitter {jitter:.3f}",
-        f"Shimmer {shimmer:.3f} dB",
-        f"Articulation instability index {articulation_instability:.2f}",
         f"Skepticism scaling {skepticism_scale:.2f} after quality/noise/coverage penalties",
     ]
     intox_limits = ["Sleep deprivation, stress, and microphone clipping can mimic this pattern."]
@@ -934,21 +934,22 @@ def _build_estimates(
         "sick_tired_state",
         skeptical_score(
         [
-            ("energy_drop", energy_drop, 0.27),
-            ("tempo_disruption", tempo_disruption, 0.20),
-            ("slow_rate", slow_rate, 0.19),
-            ("low_hnr", low_hnr, 0.16),
-            ("prosody_flat", prosody_flat, 0.10),
-            ("low_loudness", low_loudness, 0.08),
+            ("pause_long", pause_long, 0.24),
+            ("energy_drop", energy_drop, 0.24),
+            ("low_loudness", low_loudness, 0.20),
+            ("low_voiced_rate", low_voiced_rate, 0.14),
+            ("low_hnr", low_hnr, 0.10),
+            ("jitter_high", jitter_high, 0.08),
         ],
-        confound_penalty=(0.30 * noise_likelihood) + (0.16 * fast_rate) + (0.14 * prosody_dynamic),
+        confound_penalty=(0.26 * noise_likelihood) + (0.14 * short_pause) + (0.12 * high_loudness),
         ),
     )
     sick_tired_evidence = [
+        f"Long-pause index {pause_long:.2f}",
         f"Energy-drop index {energy_drop:.2f}",
-        f"Mean pause length {pause_len:.2f}s",
+        f"Low-loudness index {low_loudness:.2f}",
         f"HNR {hnr:.2f} dB",
-        f"Prosody-flatness proxy {prosody_flat:.2f}",
+        f"Voiced-rate suppression index {low_voiced_rate:.2f}",
     ]
     sick_tired_limits = ["Cannot separate respiratory causes from fatigue without clinical context."]
 
@@ -956,19 +957,20 @@ def _build_estimates(
         "stress_activation",
         skeptical_score(
         [
-            ("pressured_tempo", pressured_tempo, 0.27),
-            ("dys_pressure", dys_pressure, 0.25),
-            ("loudness_volatility", loudness_volatility, 0.24),
-            ("lexical_repetitive", lexical_repetitive, 0.14),
-            ("prosody_dynamic", prosody_dynamic, 0.10),
+            ("pressured_tempo", pressured_tempo, 0.34),
+            ("fast_rate", fast_rate, 0.24),
+            ("short_pause", short_pause, 0.18),
+            ("loudness_volatility", loudness_volatility, 0.12),
+            ("dys_pressure", dys_pressure, 0.12),
         ],
-        confound_penalty=(0.45 * noise_likelihood) + (0.20 * articulation_instability) + (0.18 * energy_drop) + (0.14 * prosody_flat),
+        confound_penalty=(0.40 * noise_likelihood) + (0.24 * pause_long) + (0.18 * low_loudness) + (0.10 * low_hnr),
         ),
     )
     stress_evidence = [
         f"Speech-rate proxy {speaking_rate:.2f} peaks/s",
+        f"Short-pause index {short_pause:.2f}",
         f"Pressured-tempo index {pressured_tempo:.2f}",
-        f"Disfluency ratio {dys_ratio:.2f}",
+        f"Fast-rate index {fast_rate:.2f}",
         f"Loudness variability {float((acoustic_features or {}).get('loudness_std', 0.0)):.3f}",
     ]
     stress_limits = ["High arousal can also reflect urgency, excitement, or speaking style."]
