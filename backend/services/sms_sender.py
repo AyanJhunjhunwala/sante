@@ -60,6 +60,9 @@ def send_clinician_alert(
     report_url: str,
     report_id: str,
     signal_score: float,
+    urgency: str,
+    safety_category: str,
+    safety_confidence: float,
     source: str,
     call_sid: str = "",
 ) -> dict[str, Any]:
@@ -84,13 +87,21 @@ def send_clinician_alert(
 
     try:
         client = Client(account_sid, auth_token)
-        body = (
-            "Sante alert: Elevated voice risk signal detected. "
-            f"Score={signal_score:.1f}. "
-            f"Report={report_id}. "
-            f"Source={source}. "
-            f"Details: {report_url}"
-        )
+        if urgency == "urgent":
+            body = (
+                "Sante URGENT safety alert: possible harm-to-self/others language detected. "
+                f"Category={safety_category or 'harm_to_self_or_others'}. "
+                f"Confidence={safety_confidence:.2f}. "
+                f"Report={report_id}. Source={source}. Details: {report_url}"
+            )
+        else:
+            body = (
+                "Sante alert: Elevated voice risk signal detected. "
+                f"Score={signal_score:.1f}. "
+                f"Report={report_id}. "
+                f"Source={source}. "
+                f"Details: {report_url}"
+            )
         if call_sid:
             body = f"{body} (CallSID={call_sid})"
 

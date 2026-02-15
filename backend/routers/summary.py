@@ -61,7 +61,7 @@ async def api_session_summary(payload: SessionSummaryRequest) -> JSONResponse:
         "status": "not_forwarded",
         "reason": "not_requested",
     }
-    if payload.forward_opt_in and payload.forward_recipient.strip():
+    if payload.forward_recipient.strip():
         try:
             static_url = export_session_report_pdf(report=report)
             backend_base_url = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
@@ -81,6 +81,10 @@ async def api_session_summary(payload: SessionSummaryRequest) -> JSONResponse:
             }
 
     report["action_result"] = action_result
+    safety_signal = report.get("safety_signal") if isinstance(report, dict) else None
+    report["safety_action_result"] = (
+        action_result if isinstance(safety_signal, dict) and safety_signal.get("urgency") == "urgent" else None
+    )
     return JSONResponse(report)
 
 

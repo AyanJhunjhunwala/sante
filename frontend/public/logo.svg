@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+  <title id="title">Santé logo</title>
+  <desc id="desc">Single-color stylized Santé wordmark with accent.</desc>
+
+  <rect x="0" y="0" width="1200" height="400" fill="none" />
+
+  <text
+    x="600"
+    y="272"
+    text-anchor="middle"
+    font-family="Inter, Segoe UI, Arial, sans-serif"
+    font-size="214"
+    font-style="italic"
+    font-weight="800"
+    letter-spacing="0"
+    text-rendering="geometricPrecision"
+    fill="#3B82F6"
+  >
+    Santé
+  </text>
+</svg>

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Santé favicon</title>
+  <desc id="desc">Single-color Santé monogram favicon.</desc>
+
+  <text
+    x="256"
+    y="300"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="Inter, Segoe UI, Arial, sans-serif"
+    font-size="290"
+    font-style="italic"
+    font-weight="800"
+    letter-spacing="-8"
+    fill="#3B82F6"
+    text-rendering="geometricPrecision"
+  >
+    S
+  </text>
+
+  <path
+    d="M 242 138 L 300 104"
+    fill="none"
+    stroke="#3B82F6"
+    stroke-width="24"
+    stroke-linecap="round"
+    shape-rendering="geometricPrecision"
+  />
+</svg>

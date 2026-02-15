@@ -108,6 +108,7 @@ def process_call(
         "report_url": report_url,
         "sms_result": sms_result,
         "action_result": action_result,
+        "safety_action_result": action_result if action_result.get("urgency") == "urgent" else None,
         "analysis_results": analysis_results,
     }
 

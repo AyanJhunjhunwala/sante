@@ -112,6 +112,9 @@ export interface SummaryActionResult {
   reason?: string;
   recipient?: string;
   source?: string;
+  urgency?: "urgent" | "routine";
+  safety_category?: string;
+  safety_confidence?: number;
   signal_score?: number;
   threshold?: number;
   error?: string;
@@ -120,6 +123,14 @@ export interface SummaryActionResult {
     status?: string;
     error?: string | null;
   };
+}
+
+export interface SummarySafetySignal {
+  category: string;
+  urgency: "urgent" | "routine";
+  confidence: number;
+  evidence_phrases: string[];
+  recommended_response: string;
 }
 
 export interface SummaryReport {
@@ -131,7 +142,9 @@ export interface SummaryReport {
   estimates?: SummaryEstimate[];
   executive_summary?: SummaryExecutive;
   limitations?: string[];
+  safety_signal?: SummarySafetySignal;
   action_result?: SummaryActionResult;
+  safety_action_result?: SummaryActionResult | null;
   content: {
     user_transcription: string;
     ai_transcription: string;

@@ -76,6 +76,18 @@ def evaluate_forwarding(
     threshold = float(os.getenv("ACTION_FORWARD_THRESHOLD", "70"))
     min_grade = os.getenv("ACTION_FORWARD_MIN_QUALITY_GRADE", "C").upper()
 
+    safety_signal = report.get("safety_signal") if isinstance(report, dict) else None
+    if isinstance(safety_signal, dict):
+        safety_urgency = str(safety_signal.get("urgency", "routine")).lower()
+        if safety_urgency == "urgent":
+            return {
+                "status": "eligible",
+                "reason": "urgent_safety_escalation",
+                "urgency": "urgent",
+                "safety_category": safety_signal.get("category", "harm_to_self_or_others"),
+                "safety_confidence": float(safety_signal.get("confidence", 0.0)),
+            }
+
     max_signal = _max_signal_score(report)
     if max_signal < threshold:
         return {
@@ -95,6 +107,7 @@ def evaluate_forwarding(
     return {
         "status": "eligible",
         "reason": "threshold_met",
+        "urgency": "routine",
         "max_signal_score": max_signal,
         "threshold": threshold,
     }
@@ -122,6 +135,9 @@ def execute_forwarding(
         report_url=report_url,
         report_id=str(report.get("report_id", "")),
         signal_score=float(decision.get("max_signal_score", 0.0)),
+        urgency=str(decision.get("urgency", "routine")),
+        safety_category=str(decision.get("safety_category", "")),
+        safety_confidence=float(decision.get("safety_confidence", 0.0)),
         source=source,
         call_sid=call_sid,
     )
@@ -131,6 +147,9 @@ def execute_forwarding(
         "reason": "sent" if send_result.get("status") != "error" else "send_failed",
         "recipient": forward_recipient,
         "source": source,
+        "urgency": decision.get("urgency", "routine"),
+        "safety_category": decision.get("safety_category"),
+        "safety_confidence": decision.get("safety_confidence", 0.0),
         "signal_score": decision.get("max_signal_score", 0.0),
         "send": send_result,
     }

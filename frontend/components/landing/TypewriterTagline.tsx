@@ -7,6 +7,7 @@ const SUFFIXES = [
   "stress trends",
   "speech biomarkers",
   "structured screening",
+  "more than just words",
 ];
 
 const TYPING_SPEED = 90;       // ms per character typing
@@ -69,11 +70,11 @@ export default function TypewriterTagline() {
         <span
           style={{
             display: "inline-block",
-            width: "3px",
-            height: "0.9em",
+            width: "4px",
+            height: "1.05em",
             background: "var(--blue)",
-            marginLeft: "2px",
-            verticalAlign: "baseline",
+            marginLeft: "3px",
+            verticalAlign: "-0.12em",
             animation: "cursor-blink 0.75s steps(2) infinite",
           }}
         />

@@ -7,6 +7,7 @@ import {
   SUMMARY_PREVIEW_REPORT,
 } from "@/lib/summaryPreviewData";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
@@ -17,27 +18,25 @@ export default function HomePage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          gap: "20px",
-          color: "var(--blue)",
-          fontSize: "64px",
-          fontWeight: 700,
-          padding: "32px 4px 0",
+          padding: "28px 4px 0",
           position: "relative",
           top: "20px",
           zIndex: 1,
-          letterSpacing: "-0.5px",
         }}
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          width="64"
-          height="64"
-          style={{ flexShrink: 0 }}
-        >
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-        </svg>
-        <span>Santé</span>
+        <Image
+          src="/logo.svg?v=20260215"
+          alt="Santé"
+          width={1200}
+          height={400}
+          priority
+          unoptimized
+          style={{
+            width: "460px",
+            height: "auto",
+            maxWidth: "92vw",
+          }}
+        />
       </div>
 
       {/* Scribble wave */}

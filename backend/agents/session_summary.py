@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import uuid
@@ -45,6 +46,8 @@ def generate_session_report(
         quality=quality,
     )
 
+    safety_signal = _analyze_safety_signal(user_transcription=user_transcription)
+
     top_flags = sorted(estimates, key=lambda e: e["score"], reverse=True)[:3]
     executive_summary = {
         "top_flags": [
@@ -58,6 +61,11 @@ def generate_session_report(
         "quality_statement": quality["summary"],
         "recommended_followups": _recommended_followups(estimates, quality),
     }
+    if safety_signal.get("urgency") == "urgent":
+        executive_summary["recommended_followups"] = [
+            "Immediate clinician safety follow-up recommended due to potential self-harm/violence language.",
+            *executive_summary["recommended_followups"],
+        ][:5]
 
     return {
         "report_id": f"sum_{uuid.uuid4().hex[:12]}",
@@ -68,6 +76,7 @@ def generate_session_report(
         "estimates": estimates,
         "executive_summary": executive_summary,
         "limitations": _global_limitations(quality),
+        "safety_signal": safety_signal,
         "content": {
             "user_transcription": user_transcription or "(no transcription captured)",
             "ai_transcription": ai_transcription or "(no assistant text captured)",
@@ -76,6 +85,278 @@ def generate_session_report(
             "acoustic_features": acoustic,
         },
     }
+
+
+def _analyze_safety_signal(*, user_transcription: str) -> dict[str, Any]:
+    if not os.getenv("SAFETY_AGENT_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        return {
+            "category": "none",
+            "urgency": "routine",
+            "confidence": 0.0,
+            "evidence_phrases": [],
+            "recommended_response": "Safety semantic agent disabled.",
+        }
+
+    text = (user_transcription or "").strip()
+    if not text:
+        return {
+            "category": "none",
+            "urgency": "routine",
+            "confidence": 0.0,
+            "evidence_phrases": [],
+            "recommended_response": "No user transcript available for safety review.",
+        }
+
+    rules_signal = _analyze_safety_signal_rules(text=text)
+    llm_signal = _analyze_safety_signal_with_llm(text=text)
+    return _merge_safety_signals(rules_signal=rules_signal, llm_signal=llm_signal)
+
+
+def _analyze_safety_signal_rules(*, text: str) -> dict[str, Any]:
+    normalized = re.sub(r"\s+", " ", text.lower())
+
+    urgent_patterns = [
+        r"\b(kill myself|want to die|end my life|suicid(?:e|al)|hurt myself|self[- ]harm)\b",
+        r"\b(kill (him|her|them|someone)|hurt (him|her|them|someone)|shoot (him|her|them|someone)|stab (him|her|them|someone))\b",
+        r"\b(i am going to kill myself|i will kill myself|i plan to kill myself)\b",
+    ]
+    concern_patterns = [
+        r"\b(i do not want to be here|no reason to live|better off dead|wish i was dead)\b",
+        r"\b(hurt (myself|someone)|violent thoughts|harm (myself|others))\b",
+    ]
+
+    evidence: list[str] = []
+    urgent_hits = 0
+    concern_hits = 0
+
+    for pattern in urgent_patterns:
+        for match in re.finditer(pattern, normalized):
+            urgent_hits += 1
+            evidence.append(_extract_phrase(text, match.start(), match.end()))
+
+    for pattern in concern_patterns:
+        for match in re.finditer(pattern, normalized):
+            concern_hits += 1
+            evidence.append(_extract_phrase(text, match.start(), match.end()))
+
+    hard_keywords = [
+        token.strip().lower()
+        for token in os.getenv("SAFETY_KEYWORDS_HARD_STOP", "suicide,kill myself,end my life").split(",")
+        if token.strip()
+    ]
+    has_hard_keyword = any(token in normalized for token in hard_keywords)
+
+    confidence = min(1.0, (urgent_hits * 0.45) + (concern_hits * 0.20) + (0.25 if has_hard_keyword else 0.0))
+    urgent_threshold = float(os.getenv("SAFETY_URGENT_CONFIDENCE_THRESHOLD", "0.65"))
+
+    if confidence >= urgent_threshold and (urgent_hits > 0 or has_hard_keyword):
+        return {
+            "category": "harm_to_self_or_others",
+            "urgency": "urgent",
+            "confidence": round(confidence, 2),
+            "evidence_phrases": evidence[:3],
+            "recommended_response": "Trigger urgent clinician review and immediate safety outreach.",
+            "analysis_method": "rules",
+        }
+
+    if confidence > 0:
+        return {
+            "category": "safety_concern",
+            "urgency": "routine",
+            "confidence": round(confidence, 2),
+            "evidence_phrases": evidence[:3],
+            "recommended_response": "Include in normal reporting and clinician follow-up review.",
+            "analysis_method": "rules",
+        }
+
+    return {
+        "category": "none",
+        "urgency": "routine",
+        "confidence": 0.0,
+        "evidence_phrases": [],
+        "recommended_response": "No explicit self-harm/violence language detected.",
+        "analysis_method": "rules",
+    }
+
+
+def _analyze_safety_signal_with_llm(*, text: str) -> dict[str, Any] | None:
+    if not _env_bool("SAFETY_LLM_AGENT_ENABLED", default=True):
+        return None
+
+    api_key = os.getenv("OPENAI_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        return None
+
+    max_chars_raw = os.getenv("SAFETY_LLM_MAX_TRANSCRIPT_CHARS", "2500")
+    timeout_raw = os.getenv("SAFETY_LLM_TIMEOUT_SECONDS", "8")
+    model = os.getenv("SAFETY_LLM_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    try:
+        max_chars = max(400, min(12000, int(max_chars_raw)))
+    except ValueError:
+        max_chars = 2500
+    try:
+        timeout_s = max(2.0, min(20.0, float(timeout_raw)))
+    except ValueError:
+        timeout_s = 8.0
+
+    payload = {
+        "transcript": text[:max_chars],
+        "task": "Classify self-harm/violence risk from explicit user statements only.",
+        "labels": ["none", "safety_concern", "harm_to_self_or_others"],
+    }
+
+    client = OpenAI(api_key=api_key)
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=260,
+            timeout=timeout_s,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a conservative clinical safety triage classifier. "
+                        "Return JSON only with keys: category, urgency, confidence, evidence_phrases, "
+                        "recommended_response, is_negated_or_quoted. "
+                        "Rules: 1) Use only explicit first-person intent or direct threats in the transcript. "
+                        "2) If content is negated, hypothetical, quoted, or historical with no current intent, set "
+                        "is_negated_or_quoted=true and avoid urgent classification. "
+                        "3) confidence must be 0..1. "
+                        "4) evidence_phrases must be exact short snippets from transcript (max 3)."
+                    ),
+                },
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            ],
+        )
+    except Exception:
+        return None
+
+    raw = (resp.choices[0].message.content or "").strip() if resp.choices else ""
+    parsed = _safe_parse_json(raw)
+    if not isinstance(parsed, dict):
+        return None
+
+    category = str(parsed.get("category", "none")).strip().lower()
+    if category not in {"none", "safety_concern", "harm_to_self_or_others"}:
+        category = "none"
+
+    urgency = str(parsed.get("urgency", "routine")).strip().lower()
+    if urgency not in {"routine", "urgent"}:
+        urgency = "routine"
+
+    try:
+        confidence = float(parsed.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    raw_evidence = parsed.get("evidence_phrases", [])
+    evidence: list[str] = []
+    if isinstance(raw_evidence, list):
+        for item in raw_evidence[:3]:
+            phrase = str(item).strip()
+            if phrase:
+                evidence.append(phrase[:180])
+
+    is_negated_or_quoted = bool(parsed.get("is_negated_or_quoted", False))
+
+    return {
+        "category": category,
+        "urgency": urgency,
+        "confidence": round(confidence, 2),
+        "evidence_phrases": evidence,
+        "recommended_response": str(
+            parsed.get("recommended_response")
+            or "Include in normal reporting and clinician follow-up review."
+        ).strip(),
+        "is_negated_or_quoted": is_negated_or_quoted,
+        "analysis_method": "llm",
+    }
+
+
+def _merge_safety_signals(
+    *,
+    rules_signal: dict[str, Any],
+    llm_signal: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if llm_signal is None:
+        return rules_signal
+
+    rule_urgency = str(rules_signal.get("urgency", "routine")).lower()
+    if rule_urgency == "urgent":
+        merged = dict(rules_signal)
+        merged["analysis_method"] = "rules_plus_llm"
+        if llm_signal.get("evidence_phrases"):
+            merged["evidence_phrases"] = list(
+                dict.fromkeys(
+                    [
+                        *list(rules_signal.get("evidence_phrases") or []),
+                        *list(llm_signal.get("evidence_phrases") or []),
+                    ]
+                )
+            )[:3]
+        return merged
+
+    llm_urgency = str(llm_signal.get("urgency", "routine")).lower()
+    llm_category = str(llm_signal.get("category", "none")).lower()
+    llm_conf = float(llm_signal.get("confidence", 0.0))
+    llm_negated = bool(llm_signal.get("is_negated_or_quoted", False))
+    llm_has_evidence = bool(llm_signal.get("evidence_phrases"))
+
+    llm_urgent_threshold = float(os.getenv("SAFETY_LLM_URGENT_CONFIDENCE_THRESHOLD", "0.85"))
+    llm_concern_threshold = float(os.getenv("SAFETY_LLM_CONCERN_CONFIDENCE_THRESHOLD", "0.60"))
+
+    if (
+        llm_urgency == "urgent"
+        and llm_category == "harm_to_self_or_others"
+        and llm_conf >= llm_urgent_threshold
+        and llm_has_evidence
+        and not llm_negated
+    ):
+        return {
+            "category": "harm_to_self_or_others",
+            "urgency": "urgent",
+            "confidence": round(max(llm_conf, float(rules_signal.get("confidence", 0.0))), 2),
+            "evidence_phrases": list(llm_signal.get("evidence_phrases") or [])[:3],
+            "recommended_response": "Trigger urgent clinician review and immediate safety outreach.",
+            "analysis_method": "rules_plus_llm",
+        }
+
+    rule_category = str(rules_signal.get("category", "none")).lower()
+    if (
+        rule_category == "none"
+        and llm_category in {"safety_concern", "harm_to_self_or_others"}
+        and llm_conf >= llm_concern_threshold
+        and not llm_negated
+    ):
+        return {
+            "category": "safety_concern",
+            "urgency": "routine",
+            "confidence": round(llm_conf, 2),
+            "evidence_phrases": list(llm_signal.get("evidence_phrases") or [])[:3],
+            "recommended_response": "Include in normal reporting and clinician follow-up review.",
+            "analysis_method": "rules_plus_llm",
+        }
+
+    merged = dict(rules_signal)
+    merged["analysis_method"] = "rules_plus_llm"
+    return merged
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _extract_phrase(text: str, start: int, end: int, window: int = 60) -> str:
+    left = max(0, start - window)
+    right = min(len(text), end + window)
+    snippet = text[left:right].strip()
+    return re.sub(r"\s+", " ", snippet)
 
 
 def export_session_report_pdf(*, report: dict[str, Any]) -> str:

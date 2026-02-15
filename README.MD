@@ -63,8 +63,15 @@ Frontend/web-flow opt-in (optional):
 - `NEXT_PUBLIC_ACTION_FORWARD_OPT_IN=true`
 - `NEXT_PUBLIC_ACTION_FORWARD_RECIPIENT=+15551234567`
 
+Safety semantic agent (end-session transcript reasoning):
+
+- `SAFETY_AGENT_ENABLED=true`
+- `SAFETY_URGENT_CONFIDENCE_THRESHOLD=0.65`
+- `SAFETY_KEYWORDS_HARD_STOP=suicide,kill myself,end my life,hurt myself`
+
 Behavior summary:
 
 - Forwarding only runs when enabled and opted in.
 - Recipient must be present in `ACTION_FORWARD_ALLOWLIST`.
 - Session forwards only if signal threshold and quality gate pass.
+- Urgent safety signals (self-harm/violence language) bypass normal score threshold and escalate immediately to clinician alerting.

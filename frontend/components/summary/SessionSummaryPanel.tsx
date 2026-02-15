@@ -77,6 +77,10 @@ export default function SessionSummaryPanel({
     () => formatActionResult(report.action_result),
     [report.action_result],
   );
+  const urgentSafetyBanner = useMemo(
+    () => formatUrgentSafetyBanner(report),
+    [report],
+  );
 
   const acoustics = report.content.acoustic_features;
   const phonemes = useMemo(
@@ -185,6 +189,23 @@ export default function SessionSummaryPanel({
       </div>
 
       {exportError && <p style={errorStyle}>{exportError}</p>}
+      {urgentSafetyBanner && (
+        <div
+          style={{
+            margin: 0,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid rgba(239,68,68,0.35)",
+            background: "var(--red-light)",
+            color: "var(--red)",
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: 1.45,
+          }}
+        >
+          {urgentSafetyBanner}
+        </div>
+      )}
       {actionMessage && (
         <p
           style={{
@@ -345,6 +366,10 @@ export default function SessionSummaryPanel({
 
 function formatActionResult(action?: SummaryActionResult): string | null {
   if (!action) return null;
+  if (action.reason === "urgent_safety_escalation" && action.status === "forwarded") {
+    return `Urgent action taken: clinician alert sent${action.recipient ? ` (${action.recipient})` : ""}.`;
+  }
+
   if (action.status === "forwarded") {
     return `Action taken: forwarded to clinician${action.recipient ? ` (${action.recipient})` : ""}.`;
   }
@@ -370,6 +395,20 @@ function formatActionResult(action?: SummaryActionResult): string | null {
   }
 
   return "No forwarding action taken for this session.";
+}
+
+function formatUrgentSafetyBanner(report: SummaryReport): string | null {
+  const safety = report.safety_signal;
+  if (!safety || safety.urgency !== "urgent") return null;
+
+  const evidence = (safety.evidence_phrases || []).slice(0, 1).join(" ");
+  const action = report.safety_action_result;
+  const actionText =
+    action?.status === "forwarded"
+      ? "Urgent clinician alert has been sent."
+      : "Urgent signal detected; forwarding did not complete.";
+
+  return `URGENT safety signal detected (confidence ${(safety.confidence * 100).toFixed(0)}%). ${actionText}${evidence ? ` Evidence: "${evidence}".` : ""}`;
 }
 
 function SignalCornerCard({ card }: { card: SignalCard }) {
