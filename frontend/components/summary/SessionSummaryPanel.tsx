@@ -110,6 +110,11 @@ export default function SessionSummaryPanel({
     [topSignals, aiSections],
   );
 
+  const hasElevatedSignal = useMemo(
+    () => insightSignalCards.some((card) => card.score > 50),
+    [insightSignalCards],
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -239,6 +244,11 @@ export default function SessionSummaryPanel({
                 51–100 (elevated signal)
               </span>
             </div>
+            {!hasElevatedSignal && (
+              <p style={{ ...paragraphStyle, color: "var(--text-secondary)", margin: "-2px 0 10px", fontSize: 12 }}>
+                No elevated exploratory signals in this sample. Cards below are shown for baseline monitoring.
+              </p>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
               {insightSignalCards.map((card) => (
                 <SignalCornerCard key={card.id} card={card} />

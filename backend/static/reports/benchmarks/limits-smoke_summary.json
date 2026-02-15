@@ -1,0 +1,279 @@
+{
+  "benchmark_id": "limits-smoke",
+  "total_runs": 2,
+  "providers": {
+    "sante-analysis": {
+      "provider": "sante-analysis",
+      "run_count": 1,
+      "latency_ms": {
+        "first_token": {
+          "count": 1,
+          "mean": 18.285,
+          "median": 18.285,
+          "p90": 18.285,
+          "p95": 18.285
+        },
+        "first_audio": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "turn_roundtrip": {
+          "count": 1,
+          "mean": 91.423,
+          "median": 91.423,
+          "p90": 91.423,
+          "p95": 91.423
+        },
+        "session_total": {
+          "count": 1,
+          "mean": 91.423,
+          "median": 91.423,
+          "p90": 91.423,
+          "p95": 91.423
+        }
+      },
+      "cost": {
+        "total_usd": 0.0,
+        "usd_per_session": 0.0,
+        "usd_per_minute": 0.0,
+        "input_tokens_total": 0,
+        "output_tokens_total": 9,
+        "tokens_total": 9
+      },
+      "reliability": {
+        "turn_failure_rate": 0.0,
+        "timeout_rate": 0.0,
+        "interruption_recovery_rate": null,
+        "turn_count_total": 1,
+        "turn_failures_total": 0,
+        "timeouts_total": 0
+      },
+      "quality": {
+        "disfluency_ratio": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "disfluency_count": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "phoneme_coverage": {
+          "count": 1,
+          "mean": 0.7,
+          "median": 0.7,
+          "p90": 0.7,
+          "p95": 0.7
+        },
+        "speech_rate_wpm": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "noise_likelihood": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "quality_grade_distribution": {
+          "ok": 1
+        }
+      },
+      "output": {
+        "instruction_compliance": {
+          "count": 1,
+          "mean": 0.8,
+          "median": 0.8,
+          "p90": 0.8,
+          "p95": 0.8
+        },
+        "output_richness": {
+          "count": 1,
+          "mean": 0.82,
+          "median": 0.82,
+          "p90": 0.82,
+          "p95": 0.82
+        },
+        "domain_signal_coverage": {
+          "count": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "numeric_evidence_count": {
+          "count": 1,
+          "mean": 4.0,
+          "median": 4.0,
+          "p90": 4.0,
+          "p95": 4.0
+        },
+        "output_word_count": {
+          "count": 1,
+          "mean": 19.0,
+          "median": 19.0,
+          "p90": 19.0,
+          "p95": 19.0
+        }
+      }
+    },
+    "chatgpt-realtime": {
+      "provider": "chatgpt-realtime",
+      "run_count": 1,
+      "latency_ms": {
+        "first_token": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "first_audio": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "turn_roundtrip": {
+          "count": 1,
+          "mean": 840.866,
+          "median": 840.866,
+          "p90": 840.866,
+          "p95": 840.866
+        },
+        "session_total": {
+          "count": 1,
+          "mean": 840.866,
+          "median": 840.866,
+          "p90": 840.866,
+          "p95": 840.866
+        }
+      },
+      "cost": {
+        "total_usd": 0.0,
+        "usd_per_session": 0.0,
+        "usd_per_minute": 0.0,
+        "input_tokens_total": 0,
+        "output_tokens_total": 0,
+        "tokens_total": 0
+      },
+      "reliability": {
+        "turn_failure_rate": 1.0,
+        "timeout_rate": 0.0,
+        "interruption_recovery_rate": null,
+        "turn_count_total": 1,
+        "turn_failures_total": 1,
+        "timeouts_total": 0
+      },
+      "quality": {
+        "disfluency_ratio": {
+          "count": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "disfluency_count": {
+          "count": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "p90": 1.0,
+          "p95": 1.0
+        },
+        "phoneme_coverage": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "speech_rate_wpm": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "noise_likelihood": {
+          "count": 0,
+          "mean": null,
+          "median": null,
+          "p90": null,
+          "p95": null
+        },
+        "quality_grade_distribution": {
+          "poor": 1
+        }
+      },
+      "output": {
+        "instruction_compliance": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "output_richness": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "domain_signal_coverage": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "numeric_evidence_count": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        },
+        "output_word_count": {
+          "count": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "p90": 0.0,
+          "p95": 0.0
+        }
+      }
+    }
+  },
+  "comparison": {
+    "baseline_provider": "sante-analysis",
+    "candidate_provider": "chatgpt-realtime",
+    "delta": {
+      "turn_roundtrip_ms_median": 749.443,
+      "first_audio_ms_median": null,
+      "session_total_ms_median": 749.443,
+      "usd_per_session": 0.0,
+      "turn_failure_rate": 1.0,
+      "disfluency_ratio_median": 1.0,
+      "phoneme_coverage_median": null,
+      "speech_rate_wpm_median": null,
+      "instruction_compliance_median": -0.8,
+      "output_richness_median": -0.82,
+      "domain_signal_coverage_median": -1.0,
+      "numeric_evidence_count_median": -4.0
+    }
+  },
+  "skipped_providers": {}
+}

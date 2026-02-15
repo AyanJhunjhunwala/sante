@@ -389,6 +389,8 @@ def _compute_quality(
         hnr = float(acoustic_features.get("hnr", 0.0))
         loudness_std = float(acoustic_features.get("loudness_std", 0.0))
         jitter = float(acoustic_features.get("jitter", 0.0))
+        speaking_rate = float(acoustic_features.get("speaking_rate", 0.0))
+        voiced_rate = float(acoustic_features.get("voiced_segments_per_sec", 0.0))
 
         if hnr < 6.0:
             score -= 18
@@ -407,6 +409,13 @@ def _compute_quality(
         if jitter > 0.04:
             score -= 6
             noise_likelihood += 0.1
+
+        if speaking_rate > 2.1 or voiced_rate > 2.1:
+            score -= 12
+            penalties.append(
+                "Very high temporal-segmentation rate suggests unstable capture conditions (recording/microphone/codec mismatch may be inflating segment counts)."
+            )
+            noise_likelihood += 0.2
 
     dys_flags = [d for d in dys_detect if d.get("dysfluency_type") != "normal"]
     if len(dys_flags) > max(8, int(phoneme_count * 0.25)):
@@ -583,7 +592,11 @@ def _build_estimates(
             "is_estimate": True,
             "evidence": evidence,
             "limitations": limitations + _global_limitations(quality),
-            "suggestion": suggestion,
+            "suggestion": _adapt_estimate_suggestion(
+                suggestion,
+                score=bounded_score,
+                quality=quality,
+            ),
         }
 
     depression_score = calibrate_signal_score(
@@ -778,6 +791,27 @@ def _score_to_level(score: int, low_quality: bool) -> str:
     return "low"
 
 
+def _adapt_estimate_suggestion(base_suggestion: str, *, score: int, quality: dict[str, Any]) -> str:
+    if score <= 50:
+        return (
+            "Low signal in this sample. Monitor trend across repeated sessions and retest with a matched "
+            "microphone/device/codec setup before drawing conclusions."
+        )
+
+    if score <= 69:
+        return (
+            f"{base_suggestion} "
+            "Treat this as a cautious follow-up signal; confirm persistence with repeat sessions using a matched setup."
+        )
+
+    if quality.get("grade") in {"C", "D"}:
+        return (
+            f"{base_suggestion} "
+            "Given limited sample quality, keep this exploratory and confirm through matched-setup retests and broader assessment."
+        )
+    return base_suggestion
+
+
 def _recommended_followups(estimates: list[dict[str, Any]], quality: dict[str, Any]) -> list[str]:
     recs = ["Repeat session in a quieter room to improve reliability."]
     if quality.get("grade") in {"C", "D"}:
@@ -793,6 +827,7 @@ def _global_limitations(quality: dict[str, Any]) -> list[str]:
     limits = [
         "Exploratory speech biomarkers are probabilistic, not diagnostic outcomes.",
         "Single-session inference may be confounded by stress, sleep, illness, or microphone quality.",
+        "Changing microphone/device/codec can shift absolute acoustic values; trend comparisons should use a matched capture setup.",
     ]
     noise_likelihood = float(quality.get("noise_likelihood", 0.0))
     if noise_likelihood >= 0.5:

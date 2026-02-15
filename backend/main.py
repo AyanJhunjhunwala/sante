@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routers import analysis, summary, tokens, twilio_voice, websocket
+from routers import analysis, benchmark, summary, tokens, twilio_voice, websocket
 
 load_dotenv()
 
@@ -46,6 +46,7 @@ app.add_middleware(
 app.include_router(tokens.router)
 app.include_router(analysis.router)
 app.include_router(summary.router)
+app.include_router(benchmark.router)
 app.include_router(websocket.router)
 app.include_router(twilio_voice.router)
 

@@ -1,5 +1,6 @@
 import ScribbleWave from "@/components/landing/ScribbleWave";
 import TypewriterTagline from "@/components/landing/TypewriterTagline";
+import HomepageAudioUpload from "@/components/landing/HomepageAudioUpload";
 import SessionSummaryPanel from "@/components/summary/SessionSummaryPanel";
 import {
   SUMMARY_PREVIEW_AI_SECTIONS,
@@ -70,8 +71,10 @@ export default function HomePage() {
           <div
             style={{
               display: "flex",
+              flexDirection: "column",
               justifyContent: "center",
               alignItems: "center",
+              gap: "14px",
               padding: "14px 0 8px",
             }}
           >
@@ -101,6 +104,7 @@ export default function HomePage() {
                 Conversation
               </span>
             </Link>
+            <HomepageAudioUpload />
           </div>
         </section>
 

@@ -63,6 +63,53 @@ export async function analyzePhonemes(
   return res.json();
 }
 
+/** Upload full session audio to the transcription endpoint. */
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "recording.webm");
+
+  const res = await fetch(`${BACKEND_URL}/api/analyze/transcript`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = (err as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) {
+      throw new Error(detail);
+    }
+
+    const detailObj = detail as {
+      message?: unknown;
+      request_id?: unknown;
+    };
+    const message =
+      typeof detailObj?.message === "string" && detailObj.message.trim()
+        ? detailObj.message
+        : "Transcription failed";
+    const requestId =
+      typeof detailObj?.request_id === "string" && detailObj.request_id.trim()
+        ? ` (request: ${detailObj.request_id})`
+        : "";
+    throw new Error(`${message}${requestId}`);
+  }
+
+  const data = (await res.json()) as {
+    transcript?: string;
+    status?: string;
+    request_id?: string;
+  };
+  const transcript = (data.transcript || "").trim();
+  if (data.status !== "ok" || !transcript) {
+    throw new Error(
+      `No speech transcript detected from uploaded audio${data.request_id ? ` (request: ${data.request_id})` : ""}.`,
+    );
+  }
+
+  return transcript;
+}
+
 /** Upload audio blob to the stress analysis endpoint. */
 export async function analyzeStress(audioBlob: Blob): Promise<AnalysisResults> {
   const form = new FormData();
