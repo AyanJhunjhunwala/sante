@@ -8,7 +8,10 @@
       "Bash(npx next info:*)",
       "Bash(node:*)",
       "Bash(npx next dev)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(ls:*)",
+      "Bash(where:*)",
+      "Bash(git add:*)"
     ]
   }
 }

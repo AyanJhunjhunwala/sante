@@ -53,7 +53,11 @@ async def analysis_ws(
                 chunk = message["bytes"]
                 chunk_count = session_manager.append_audio(session_id, chunk)
 
-                frames = await analyze_chunk(chunk, chunk_count, segment)
+                # Pass full accumulated audio buffer for pitch detection
+                session = session_manager.get_session(session_id)
+                audio_buf = session.audio_buffer if session else None
+
+                frames = await analyze_chunk(chunk, chunk_count, segment, audio_buf)
                 for frame in frames:
                     await websocket.send_json(frame)
 

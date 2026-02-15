@@ -1,15 +1,31 @@
 """
 Lightweight real-time audio analysis that runs in-process on each 500ms chunk.
-Produces waveform, stress proxy, and speech metrics frames for the WebSocket.
+Produces waveform and F0 pitch frames for the WebSocket.
 
 NOTE: This is a heuristic approximation for live display only.
-The definitive stress result comes from the RunPod WFST model at session end.
+The definitive results come from the RunPod models at session end.
 """
 
 from __future__ import annotations
 
-import struct
+import asyncio
+import logging
 import math
+import os
+import subprocess
+import tempfile
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# Target sample rate for pitch detection
+SAMPLE_RATE = 16000
+F0_MIN = 75   # Hz — minimum expected fundamental frequency
+F0_MAX = 500  # Hz — maximum expected fundamental frequency
+
+# How many seconds of trailing audio to analyze for pitch
+PITCH_WINDOW_SECS = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -17,14 +33,14 @@ import math
 # ---------------------------------------------------------------------------
 
 
-async def analyze_chunk(chunk: bytes, chunk_count: int, segment: str) -> list[dict]:
+async def analyze_chunk(
+    chunk: bytes,
+    chunk_count: int,
+    segment: str,
+    audio_buffer: bytes | bytearray | None = None,
+) -> list[dict]:
     """
     Process a raw audio chunk (audio/webm;codecs=opus binary from MediaRecorder).
-
-    Returns a list of WS frames to send back, which may include:
-    - waveform frame (every chunk)
-    - stress_score frame (every 3 chunks)
-    - speech_metrics frame (every 4 chunks)
     """
     frames: list[dict] = []
 
@@ -34,17 +50,126 @@ async def analyze_chunk(chunk: bytes, chunk_count: int, segment: str) -> list[di
     # Always send waveform frame
     frames.append({"type": "waveform", "data": energy_values})
 
-    # Every 3 chunks (~1.5 s) emit a stress proxy
-    if chunk_count % 3 == 0:
-        stress_frame = _compute_stress_proxy(energy_values, chunk_count)
-        frames.append(stress_frame)
-
-    # Every 4 chunks (~2 s) emit speech metrics
-    if chunk_count % 4 == 0:
-        metrics_frame = _compute_speech_metrics(energy_values, chunk_count)
-        frames.append(metrics_frame)
+    # Every 2 chunks (~1s) try to extract F0 from the accumulated audio
+    if chunk_count % 2 == 0 and audio_buffer and len(audio_buffer) > 500:
+        f0 = await asyncio.to_thread(_extract_f0_sync, bytes(audio_buffer))
+        frames.append({"type": "pitch", "f0": f0})
 
     return frames
+
+
+# ---------------------------------------------------------------------------
+# Pitch detection via ffmpeg decode + autocorrelation
+# ---------------------------------------------------------------------------
+
+
+def _extract_f0_sync(full_webm: bytes) -> float | None:
+    """
+    Synchronous F0 extraction (run via asyncio.to_thread).
+    Writes webm to temp file, decodes with ffmpeg, analyzes tail.
+    """
+    tmp_in = None
+    tmp_out = None
+    try:
+        # Write webm to temp file
+        tmp_in = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
+        tmp_in.write(full_webm)
+        tmp_in.close()
+
+        # Output PCM temp file
+        tmp_out_path = tmp_in.name.replace(".webm", ".pcm")
+
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", tmp_in.name,
+                "-f", "s16le",
+                "-acodec", "pcm_s16le",
+                "-ar", str(SAMPLE_RATE),
+                "-ac", "1",
+                "-v", "quiet",
+                tmp_out_path,
+            ],
+            capture_output=True,
+            timeout=5,
+        )
+
+        if result.returncode != 0:
+            stderr_msg = result.stderr.decode(errors="replace")[:200]
+            logger.debug(f"ffmpeg returned {result.returncode}: {stderr_msg}")
+            return None
+
+        if not os.path.exists(tmp_out_path):
+            return None
+
+        pcm_bytes = open(tmp_out_path, "rb").read()
+        os.unlink(tmp_out_path)
+
+        if len(pcm_bytes) < 512:
+            return None
+
+        pcm = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+
+        # Only analyze the trailing window for current pitch
+        tail_samples = int(SAMPLE_RATE * PITCH_WINDOW_SECS)
+        if len(pcm) > tail_samples:
+            pcm = pcm[-tail_samples:]
+
+        return _autocorrelation_f0(pcm, SAMPLE_RATE)
+
+    except Exception as e:
+        logger.warning(f"F0 extraction failed: {e}")
+        return None
+    finally:
+        if tmp_in and os.path.exists(tmp_in.name):
+            try:
+                os.unlink(tmp_in.name)
+            except OSError:
+                pass
+
+
+def _autocorrelation_f0(signal: np.ndarray, sr: int) -> float | None:
+    """
+    Estimate fundamental frequency using autocorrelation method.
+    Returns F0 in Hz, or None if the signal is unvoiced/silent.
+    """
+    # Apply Hanning window
+    windowed = signal * np.hanning(len(signal))
+
+    # Check if signal has enough energy (silence detection)
+    rms = np.sqrt(np.mean(windowed ** 2))
+    if rms < 0.01:
+        return None
+
+    # Autocorrelation via FFT
+    n = len(windowed)
+    fft = np.fft.rfft(windowed, n=2 * n)
+    acf = np.fft.irfft(fft * np.conj(fft))[:n]
+
+    # Normalize
+    acf = acf / acf[0] if acf[0] != 0 else acf
+
+    # Search for peak in valid F0 range
+    min_lag = int(sr / F0_MAX)
+    max_lag = int(sr / F0_MIN)
+    max_lag = min(max_lag, n - 1)
+
+    if min_lag >= max_lag:
+        return None
+
+    search_region = acf[min_lag:max_lag + 1]
+    if len(search_region) == 0:
+        return None
+
+    peak_idx = np.argmax(search_region) + min_lag
+    peak_val = acf[peak_idx]
+
+    # Voicing threshold — peak must be strong enough
+    if peak_val < 0.25:
+        return None
+
+    f0 = sr / peak_idx
+    return round(f0, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -55,11 +180,6 @@ async def analyze_chunk(chunk: bytes, chunk_count: int, segment: str) -> list[di
 def _estimate_energy(chunk: bytes) -> list[float]:
     """
     Produce a 64-point normalized energy envelope from raw bytes.
-
-    We cannot decode opus/webm in-process without heavy dependencies,
-    so we treat the raw bytes as a proxy signal by computing the
-    byte-value variance per window. This gives a visually meaningful
-    waveform even from compressed audio data.
     """
     n = len(chunk)
     if n < 64:
@@ -75,79 +195,9 @@ def _estimate_energy(chunk: bytes) -> list[float]:
         if not window:
             values.append(0.0)
             continue
-        # Use signed byte interpretation for better range
         signed = [b - 128 for b in window]
         rms = math.sqrt(sum(s * s for s in signed) / len(signed))
         values.append(rms)
 
-    # Normalize to [-1, 1]
     max_val = max(abs(v) for v in values) or 1.0
     return [v / max_val for v in values]
-
-
-def _compute_stress_proxy(energy: list[float], chunk_count: int) -> dict:
-    """
-    Heuristic stress estimate from energy variance.
-    High variance in energy → higher stress proxy score.
-    This is NOT the RunPod model result — just a visual indicator.
-    """
-    if not energy:
-        return {
-            "type": "stress_score",
-            "value": 0.5,
-            "confidence": 0,
-            "is_estimate": True,
-        }
-
-    mean = sum(energy) / len(energy)
-    variance = sum((e - mean) ** 2 for e in energy) / len(energy)
-
-    # Map variance to stress 0–1 (heuristic threshold)
-    stress_value = min(1.0, variance * 8.0)
-
-    # Confidence grows with number of chunks (more data = more confident)
-    confidence = min(85.0, chunk_count * 3.5)
-
-    return {
-        "type": "stress_score",
-        "value": round(stress_value, 3),
-        "confidence": round(confidence, 1),
-        "is_estimate": True,  # flags this as a live estimate, not final RunPod result
-    }
-
-
-def _compute_speech_metrics(energy: list[float], chunk_count: int) -> dict:
-    """
-    Rough speech metrics from energy envelope.
-    - disfluency: count energy dips below threshold (potential pauses/repetitions)
-    - pacing: ratio of high-energy frames (fast = lots of sound, slow = lots of silence)
-    - wpm: estimated from pacing and elapsed chunks (rough heuristic)
-    """
-    if not energy:
-        return {"type": "speech_metrics", "disfluency": 0, "pacing": 1.0, "wpm": None}
-
-    threshold = 0.15
-    high_energy_frames = sum(1 for e in energy if abs(e) > threshold)
-    pacing = round(high_energy_frames / len(energy), 2)
-
-    # Count zero-crossings in energy as disfluency proxy
-    disfluency = 0
-    prev_above = abs(energy[0]) > threshold
-    for e in energy[1:]:
-        above = abs(e) > threshold
-        if prev_above and not above:
-            disfluency += 1
-        prev_above = above
-
-    # Rough WPM estimate: assume ~150 WPM average, scale by pacing ratio
-    # Only meaningful after a few seconds of data
-    wpm = None
-    if chunk_count >= 6:
-        wpm = round(150 * pacing * 1.4)
-
-    return {
-        "type": "speech_metrics",
-        "disfluency": max(0, disfluency - 1),  # subtract 1 for natural starts
-        "pacing": pacing,
-        "wpm": wpm,
-    }

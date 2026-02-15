@@ -56,6 +56,10 @@ export interface SessionState {
   wpmHistory: WPMPoint[];
   totalWordCount: number;
 
+  // Speaking time tracking (excludes AI speaking periods)
+  speakingStartedAt: number; // epoch ms when user last unmuted, 0 = muted
+  totalSpeakingMs: number; // accumulated ms the user has been unmuted
+
   // Post-session results
   analysisResults: AnalysisResults | null;
   summaryReport: SummaryReport | null;
@@ -137,6 +141,8 @@ const initialState: SessionState = {
   pitchHistory: [],
   wpmHistory: [],
   totalWordCount: 0,
+  speakingStartedAt: 0,
+  totalSpeakingMs: 0,
   analysisResults: null,
   summaryReport: null,
   resultsStatus: "idle",
@@ -167,7 +173,24 @@ export const useSessionStore = create<SessionState & SessionActions>()(
 
       resetSession: () => set(initialState),
 
-      setMuted: (isMuted) => set({ isMuted }),
+      setMuted: (isMuted) =>
+        set((s) => {
+          const now = Date.now();
+          if (isMuted && s.speakingStartedAt > 0) {
+            // User just muted — accumulate speaking time
+            return {
+              isMuted,
+              totalSpeakingMs:
+                s.totalSpeakingMs + (now - s.speakingStartedAt),
+              speakingStartedAt: 0,
+            };
+          }
+          if (!isMuted && s.speakingStartedAt === 0) {
+            // User just unmuted — start timer
+            return { isMuted, speakingStartedAt: now };
+          }
+          return { isMuted };
+        }),
 
       setAiSpeaking: (speaking) =>
         set((s) => ({
@@ -284,11 +307,22 @@ export const useSessionStore = create<SessionState & SessionActions>()(
         set((s) => {
           const words = text.trim().split(/\s+/).filter(Boolean).length;
           const newTotal = s.totalWordCount + words;
+
+          // Use actual speaking time (unmuted time only)
+          const now = Date.now();
+          const currentSpeakingMs =
+            s.speakingStartedAt > 0
+              ? s.totalSpeakingMs + (now - s.speakingStartedAt)
+              : s.totalSpeakingMs;
+          const speakingSecs = currentSpeakingMs / 1000;
+
+          if (speakingSecs < 1) return { totalWordCount: newTotal };
+
+          const wpm = Math.round((newTotal / speakingSecs) * 60);
+          // Use total elapsed for the graph x-axis so it aligns with pitch
           const elapsed = s.sessionStartedAt
-            ? (Date.now() - s.sessionStartedAt) / 1000
+            ? (now - s.sessionStartedAt) / 1000
             : 0;
-          if (elapsed < 1) return { totalWordCount: newTotal };
-          const wpm = Math.round((newTotal / elapsed) * 60);
           const point: WPMPoint = { time: elapsed, wpm };
           const history = [...s.wpmHistory, point].slice(-120);
           return { totalWordCount: newTotal, wpmHistory: history };

@@ -6,6 +6,8 @@ const GRAPH_W = 280;
 const GRAPH_H = 100;
 const F0_MIN = 75;
 const F0_MAX = 400;
+const VISIBLE_WINDOW = 30; // seconds of history visible
+const CURSOR_RATIO = 2 / 3; // latest point at 2/3 across
 
 function f0ToY(f0: number): number {
   const clamped = Math.max(F0_MIN, Math.min(F0_MAX, f0));
@@ -19,21 +21,23 @@ export default function F0PitchPanel() {
   const voiced = pitchHistory.filter((p) => p.f0 !== null);
   const latestF0 = voiced.length > 0 ? voiced[voiced.length - 1].f0 : null;
 
-  // Build SVG polyline from voiced points
-  let polyline = "";
-  if (voiced.length >= 2) {
-    const tMin = pitchHistory[0].time;
-    const tMax = pitchHistory[pitchHistory.length - 1].time;
-    const tRange = Math.max(tMax - tMin, 1);
+  // Sliding window: latest point at CURSOR_RATIO, older points scroll left
+  let points: { x: number; y: number }[] = [];
+  if (pitchHistory.length >= 1 && voiced.length >= 1) {
+    const now = pitchHistory[pitchHistory.length - 1].time;
+    const windowStart = now - VISIBLE_WINDOW;
 
-    polyline = voiced
+    points = voiced
+      .filter((p) => p.time >= windowStart)
       .map((p) => {
-        const x = ((p.time - tMin) / tRange) * GRAPH_W;
-        const y = f0ToY(p.f0!);
-        return `${x},${y}`;
+        const elapsed = p.time - now;
+        const x = (CURSOR_RATIO + elapsed / VISIBLE_WINDOW) * GRAPH_W;
+        return { x, y: f0ToY(p.f0!) };
       })
-      .join(" ");
+      .filter((p) => p.x >= 0);
   }
+
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
     <div
@@ -92,7 +96,7 @@ export default function F0PitchPanel() {
           viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
           width="100%"
           height={GRAPH_H}
-          style={{ display: "block" }}
+          style={{ display: "block", overflow: "hidden" }}
         >
           {/* Grid lines */}
           {[100, 150, 200, 250, 300, 350].map((hz) => {
@@ -132,20 +136,15 @@ export default function F0PitchPanel() {
             />
           )}
 
-          {/* Dots for individual voiced points */}
-          {voiced.length > 0 &&
-            (() => {
-              const tMin = pitchHistory[0].time;
-              const tMax = pitchHistory[pitchHistory.length - 1].time;
-              const tRange = Math.max(tMax - tMin, 1);
-              // Only show last dot
-              const last = voiced[voiced.length - 1];
-              const x = ((last.time - tMin) / tRange) * GRAPH_W;
-              const y = f0ToY(last.f0!);
-              return (
-                <circle cx={x} cy={y} r={3} fill="var(--blue)" />
-              );
-            })()}
+          {/* Latest dot */}
+          {points.length > 0 && (
+            <circle
+              cx={points[points.length - 1].x}
+              cy={points[points.length - 1].y}
+              r={3}
+              fill="var(--blue)"
+            />
+          )}
         </svg>
       )}
 
