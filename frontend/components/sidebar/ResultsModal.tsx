@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/store/sessionStore";
-import { fetchSummaryChatReply } from "@/lib/api";
+import { fetchSummaryChatReply, fetchAIReport } from "@/lib/api";
 import type { SummaryReport, AcousticFeatures } from "@/lib/types";
+
+type Section = "data" | "report";
 
 export default function ResultsModal() {
   const router = useRouter();
@@ -134,22 +136,52 @@ export default function ResultsModal() {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/* Summary view                                                              */
+/* Acoustic feature config: ranges for severity bars                        */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-const ACOUSTIC_LABELS: Record<keyof AcousticFeatures, { label: string; unit: string }> = {
-  f0_mean: { label: "Pitch (F0 mean)", unit: "st" },
-  f0_std: { label: "Pitch variability", unit: "" },
-  jitter: { label: "Jitter", unit: "" },
-  shimmer_db: { label: "Shimmer", unit: "dB" },
-  hnr: { label: "HNR", unit: "dB" },
-  loudness_mean: { label: "Loudness", unit: "" },
-  loudness_std: { label: "Loudness variability", unit: "" },
-  speaking_rate: { label: "Speaking rate", unit: "peaks/s" },
-  voiced_segments_per_sec: { label: "Voiced segments", unit: "/s" },
-  mean_pause_length: { label: "Mean pause", unit: "s" },
-  mean_voiced_length: { label: "Mean voiced length", unit: "s" },
+interface AcousticMeta {
+  label: string;
+  unit: string;
+  min: number;
+  max: number;
+  /** If true, higher values = worse (bar turns red). Otherwise higher = better (green). */
+  invertColor?: boolean;
+}
+
+const ACOUSTIC_META: Record<keyof AcousticFeatures, AcousticMeta> = {
+  f0_mean:                 { label: "Pitch (F0 mean)",      unit: "st",      min: 10,   max: 55,   invertColor: false },
+  f0_std:                  { label: "Pitch variability",    unit: "st",      min: 0,    max: 12,   invertColor: false },
+  jitter:                  { label: "Jitter",               unit: "",        min: 0,    max: 0.06, invertColor: true },
+  shimmer_db:              { label: "Shimmer",              unit: "dB",      min: 0,    max: 1.5,  invertColor: true },
+  hnr:                     { label: "HNR",                  unit: "dB",      min: 0,    max: 35,   invertColor: false },
+  loudness_mean:           { label: "Loudness",             unit: "",        min: 0,    max: 1,    invertColor: false },
+  loudness_std:            { label: "Loudness variability", unit: "",        min: 0,    max: 0.5,  invertColor: false },
+  speaking_rate:           { label: "Speaking rate",        unit: "peaks/s", min: 0,    max: 8,    invertColor: false },
+  voiced_segments_per_sec: { label: "Voiced segments",      unit: "/s",      min: 0,    max: 6,    invertColor: false },
+  mean_pause_length:       { label: "Mean pause",           unit: "s",       min: 0,    max: 2,    invertColor: true },
+  mean_voiced_length:      { label: "Mean voiced length",   unit: "s",       min: 0,    max: 2,    invertColor: false },
 };
+
+function barPercent(val: number, min: number, max: number): number {
+  return Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+}
+
+function barColor(pct: number, invert: boolean): string {
+  // pct 0..100. For normal metrics: low=muted, mid=blue, high=green.
+  // For inverted (jitter/shimmer/pause): low=green, high=red.
+  if (invert) {
+    if (pct < 40) return "#22c55e";
+    if (pct < 70) return "#eab308";
+    return "#ef4444";
+  }
+  if (pct < 25) return "#94a3b8";
+  if (pct < 60) return "#3b82f6";
+  return "#22c55e";
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Summary view with two sections: Data → Report                            */
+/* ────────────────────────────────────────────────────────────────────────── */
 
 function SummaryView({
   report,
@@ -170,12 +202,16 @@ function SummaryView({
   onChatSend: () => void;
   onClose: () => void;
 }) {
+  const [section, setSection] = useState<Section>("data");
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
   const userTx = report.content?.user_transcription ?? "";
   const phonemes = report.content?.phonemes ?? [];
   const dysDetect = report.content?.dys_detect ?? [];
   const acoustics = report.content?.acoustic_features ?? null;
 
-  // Build a lookup: phoneme index → dysfluency type
   const dysMap = new Map<number, string>();
   dysDetect.forEach((d, i) => {
     if (d.dysfluency_type !== "normal") {
@@ -187,6 +223,20 @@ function SummaryView({
     (d) => d.dysfluency_type !== "normal",
   ).length;
 
+  const handleGenerateReport = async () => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const narrative = await fetchAIReport(report);
+      setAiReport(narrative);
+      setSection("report");
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to generate report");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -196,6 +246,7 @@ function SummaryView({
         textAlign: "left",
       }}
     >
+      {/* Header */}
       <h2
         style={{
           margin: 0,
@@ -219,186 +270,314 @@ function SummaryView({
         {report.segment} session &middot; {report.duration_seconds.toFixed(1)}s
       </p>
 
-      {/* Grid blocks */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Block title="Transcription">
-          {userTx || "No transcription captured."}
-        </Block>
-        <Block title="Phonemes">
-          {phonemes.length === 0 ? (
-            <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
-              N/A
-            </span>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "3px",
-                marginTop: 2,
-              }}
-            >
-              {phonemes.map((ph, i) => {
-                const dysType = dysMap.get(i);
-                const chipColor = dysType === "repetition"
-                  ? "#d97706"
-                  : dysType === "deletion"
-                    ? "#dc2626"
-                    : dysType
-                      ? "#ea580c"
-                      : "var(--text-secondary)";
-                const chipBg = dysType === "repetition"
-                  ? "rgba(217,119,6,0.1)"
-                  : dysType === "deletion"
-                    ? "rgba(220,38,38,0.1)"
-                    : dysType
-                      ? "rgba(234,88,12,0.1)"
-                      : "transparent";
-                return (
-                  <span
-                    key={i}
-                    title={dysType ?? "normal"}
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: 11,
-                      padding: "1px 5px",
-                      borderRadius: 5,
-                      fontWeight: 600,
-                      color: chipColor,
-                      background: chipBg,
-                      border: "1px solid var(--border-light, #e5e7eb)",
-                    }}
-                  >
-                    {ph}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </Block>
-        <Block title="Disfluencies">
-          {disfluencyCount === 0
-            ? "None detected"
-            : `${disfluencyCount} detected`}
-        </Block>
-        <Block title="Duration">{report.duration_seconds.toFixed(1)}s</Block>
+      {/* Section tabs */}
+      <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+        <TabButton
+          active={section === "data"}
+          onClick={() => setSection("data")}
+          label="Data"
+        />
+        <TabButton
+          active={section === "report"}
+          onClick={() => {
+            if (aiReport) {
+              setSection("report");
+            } else {
+              handleGenerateReport();
+            }
+          }}
+          label={reportLoading ? "Generating..." : "AI Report"}
+          disabled={reportLoading}
+        />
       </div>
 
-      {/* Acoustic features table */}
-      {acoustics && (
-        <div
-          style={{
-            background: "var(--bg-subtle, #f8f9fb)",
-            borderRadius: 12,
-            padding: "12px 16px",
-          }}
-        >
-          <h3 style={h3Style}>Acoustic Features</h3>
-          {(Object.keys(ACOUSTIC_LABELS) as (keyof AcousticFeatures)[]).map(
-            (key) => {
-              const val = acoustics[key];
-              if (val == null) return null;
-              const { label, unit } = ACOUSTIC_LABELS[key];
-              return (
-                <div key={key} style={metricRowStyle}>
-                  <span style={{ flex: 1 }}>{label}</span>
-                  <span
-                    style={{ width: 90, textAlign: "right", fontWeight: 600 }}
-                  >
-                    {val.toFixed(3)}
-                  </span>
-                  {unit && (
-                    <span
-                      style={{
-                        width: 50,
-                        textAlign: "left",
-                        paddingLeft: 4,
-                        color: "var(--text-muted)",
-                        fontSize: 11,
-                      }}
-                    >
-                      {unit}
-                    </span>
-                  )}
+      {/* ── DATA SECTION ── */}
+      {section === "data" && (
+        <>
+          {/* Grid blocks */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Block title="Transcription">
+              {userTx || "No transcription captured."}
+            </Block>
+            <Block title="Phonemes">
+              {phonemes.length === 0 ? (
+                <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+                  N/A
+                </span>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "3px",
+                    marginTop: 2,
+                    maxHeight: 120,
+                    overflowY: "auto",
+                  }}
+                >
+                  {phonemes.map((ph, i) => {
+                    const dysType = dysMap.get(i);
+                    const chipColor = dysType === "repetition"
+                      ? "#d97706"
+                      : dysType === "deletion"
+                        ? "#dc2626"
+                        : dysType
+                          ? "#ea580c"
+                          : "var(--text-secondary)";
+                    const chipBg = dysType === "repetition"
+                      ? "rgba(217,119,6,0.1)"
+                      : dysType === "deletion"
+                        ? "rgba(220,38,38,0.1)"
+                        : dysType
+                          ? "rgba(234,88,12,0.1)"
+                          : "transparent";
+                    return (
+                      <span
+                        key={i}
+                        title={dysType ?? "normal"}
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: 11,
+                          padding: "1px 5px",
+                          borderRadius: 5,
+                          fontWeight: 600,
+                          color: chipColor,
+                          background: chipBg,
+                          border: "1px solid var(--border-light, #e5e7eb)",
+                        }}
+                      >
+                        {ph}
+                      </span>
+                    );
+                  })}
                 </div>
-              );
-            },
-          )}
-        </div>
-      )}
+              )}
+            </Block>
+            <Block title="Disfluencies">
+              {disfluencyCount === 0
+                ? "None detected"
+                : `${disfluencyCount} detected`}
+            </Block>
+            <Block title="Duration">{report.duration_seconds.toFixed(1)}s</Block>
+          </div>
 
-      {/* Chat */}
-      <div
-        style={{
-          background: "var(--bg-subtle, #f8f9fb)",
-          borderRadius: 12,
-          padding: "12px 16px",
-        }}
-      >
-        <h3 style={h3Style}>Ask about this report</h3>
-        <div
-          ref={chatLogRef}
-          style={{
-            maxHeight: 140,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          {chatMessages.map((m, i) => (
+          {/* Acoustic features with severity bars */}
+          {acoustics && (
             <div
-              key={i}
               style={{
-                fontSize: 13,
-                lineHeight: 1.5,
-                padding: "6px 10px",
-                borderRadius: 8,
-                maxWidth: "85%",
-                alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                background: m.role === "user" ? "var(--blue)" : "#fff",
-                color: m.role === "user" ? "#fff" : "var(--text)",
-                border:
-                  m.role === "ai" ? "1px solid var(--border, #e5e7eb)" : "none",
+                background: "var(--bg-subtle, #f8f9fb)",
+                borderRadius: 12,
+                padding: "12px 16px",
               }}
             >
-              {m.text}
+              <h3 style={h3Style}>Acoustic Features</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(Object.keys(ACOUSTIC_META) as (keyof AcousticFeatures)[]).map(
+                  (key) => {
+                    const val = acoustics[key];
+                    if (val == null) return null;
+                    const meta = ACOUSTIC_META[key];
+                    const pct = barPercent(val, meta.min, meta.max);
+                    const color = barColor(pct, !!meta.invertColor);
+                    return (
+                      <div key={key}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "baseline",
+                            marginBottom: 3,
+                          }}
+                        >
+                          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                            {meta.label}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+                            {val.toFixed(3)}
+                            {meta.unit && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 400,
+                                  color: "var(--text-muted)",
+                                  marginLeft: 3,
+                                }}
+                              >
+                                {meta.unit}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {/* Bar track */}
+                        <div
+                          style={{
+                            width: "100%",
+                            height: 6,
+                            borderRadius: 3,
+                            background: "var(--border-light, #e5e7eb)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              borderRadius: 3,
+                              background: color,
+                              transition: "width 0.6s ease, background 0.4s ease",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => onChatInputChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onChatSend()}
-            placeholder="Ask about this report..."
-            disabled={chatLoading}
+          )}
+
+          {/* Generate Report CTA */}
+          <div style={{ textAlign: "center" }}>
+            <button
+              onClick={handleGenerateReport}
+              disabled={reportLoading}
+              style={{
+                ...btnOutlineStyle,
+                opacity: reportLoading ? 0.6 : 1,
+              }}
+            >
+              {reportLoading ? "Generating Report..." : "Generate AI Report →"}
+            </button>
+            {reportError && (
+              <p style={{ fontSize: 12, color: "var(--red)", margin: "6px 0 0" }}>
+                {reportError}
+              </p>
+            )}
+          </div>
+
+          {/* Chat */}
+          <div
             style={{
-              flex: 1,
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "1px solid var(--border, #e5e7eb)",
-              fontSize: 13,
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={onChatSend}
-            disabled={chatLoading}
-            style={{
-              ...btnStyle,
-              padding: "8px 16px",
-              fontSize: 13,
-              marginTop: 0,
-              opacity: chatLoading ? 0.6 : 1,
+              background: "var(--bg-subtle, #f8f9fb)",
+              borderRadius: 12,
+              padding: "12px 16px",
             }}
           >
-            Send
-          </button>
-        </div>
-      </div>
+            <h3 style={h3Style}>Ask about this report</h3>
+            <div
+              ref={chatLogRef}
+              style={{
+                maxHeight: 140,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                marginBottom: 10,
+              }}
+            >
+              {chatMessages.map((m, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    maxWidth: "85%",
+                    alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                    background: m.role === "user" ? "var(--blue)" : "#fff",
+                    color: m.role === "user" ? "#fff" : "var(--text)",
+                    border:
+                      m.role === "ai" ? "1px solid var(--border, #e5e7eb)" : "none",
+                  }}
+                >
+                  {m.text}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => onChatInputChange(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && onChatSend()}
+                placeholder="Ask about this report..."
+                disabled={chatLoading}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border, #e5e7eb)",
+                  fontSize: 13,
+                  outline: "none",
+                }}
+              />
+              <button
+                onClick={onChatSend}
+                disabled={chatLoading}
+                style={{
+                  ...btnStyle,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  marginTop: 0,
+                  opacity: chatLoading ? 0.6 : 1,
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── AI REPORT SECTION ── */}
+      {section === "report" && (
+        <>
+          {reportLoading && (
+            <div style={centerCol}>
+              <div style={spinnerSmallStyle} />
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+                Generating your AI report&hellip;
+              </p>
+            </div>
+          )}
+
+          {aiReport && !reportLoading && (
+            <div
+              style={{
+                background: "var(--bg-subtle, #f8f9fb)",
+                borderRadius: 12,
+                padding: "16px 20px",
+              }}
+            >
+              <h3 style={{ ...h3Style, fontSize: 15, marginBottom: 12 }}>
+                AI Analysis Report
+              </h3>
+              <div
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                  color: "var(--text)",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {aiReport}
+              </div>
+            </div>
+          )}
+
+          {reportError && !reportLoading && (
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontSize: 13, color: "var(--red)", margin: "0 0 8px" }}>
+                {reportError}
+              </p>
+              <button onClick={handleGenerateReport} style={btnOutlineStyle}>
+                Retry
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Disclaimer + close */}
       <p
@@ -425,6 +604,39 @@ function SummaryView({
 /* ────────────────────────────────────────────────────────────────────────── */
 /* Small helpers                                                             */
 /* ────────────────────────────────────────────────────────────────────────── */
+
+function TabButton({
+  active,
+  onClick,
+  label,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "6px 18px",
+        fontSize: 13,
+        fontWeight: 600,
+        borderRadius: 999,
+        border: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        background: active ? "var(--blue)" : "var(--bg-subtle, #f0f1f3)",
+        color: active ? "#fff" : "var(--text-secondary)",
+        transition: "all 0.2s ease",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 function Block({
   title,
@@ -504,6 +716,15 @@ const spinnerStyle: React.CSSProperties = {
   animation: "spin 0.8s linear infinite",
 };
 
+const spinnerSmallStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: "50%",
+  border: "2px solid var(--border)",
+  borderTopColor: "var(--blue)",
+  animation: "spin 0.8s linear infinite",
+};
+
 const btnStyle: React.CSSProperties = {
   background: "var(--blue)",
   color: "#ffffff",
@@ -517,18 +738,21 @@ const btnStyle: React.CSSProperties = {
   marginTop: 4,
 };
 
+const btnOutlineStyle: React.CSSProperties = {
+  background: "transparent",
+  color: "var(--blue)",
+  border: "2px solid var(--blue)",
+  borderRadius: "999px",
+  padding: "10px 24px",
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  transition: "all 0.2s ease",
+};
+
 const h3Style: React.CSSProperties = {
   margin: "0 0 8px",
   fontSize: 13,
   fontWeight: 600,
   color: "var(--text)",
-};
-
-const metricRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  padding: "4px 0",
-  fontSize: 13,
-  color: "var(--text-secondary)",
-  borderBottom: "1px solid var(--border-light, #f0f0f3)",
 };
