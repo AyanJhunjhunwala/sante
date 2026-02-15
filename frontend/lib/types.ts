@@ -66,11 +66,49 @@ export interface AcousticFeatures {
   mean_voiced_length: number;
 }
 
+export interface SummaryQuality {
+  score: number;
+  grade: "A" | "B" | "C" | "D";
+  noise_likelihood: number;
+  confidence_cap: number;
+  summary: string;
+  penalties: string[];
+}
+
+export interface SummaryEstimate {
+  key: string;
+  title: string;
+  score: number;
+  confidence: number;
+  level: string;
+  is_estimate: boolean;
+  evidence: string[];
+  limitations: string[];
+  suggestion: string;
+}
+
+export interface SummaryExecutiveItem {
+  title: string;
+  level: string;
+  score: number;
+  confidence: number;
+}
+
+export interface SummaryExecutive {
+  top_flags: SummaryExecutiveItem[];
+  quality_statement: string;
+  recommended_followups: string[];
+}
+
 export interface SummaryReport {
   report_id: string;
   created_at: string;
   segment: string;
   duration_seconds: number;
+  quality?: SummaryQuality;
+  estimates?: SummaryEstimate[];
+  executive_summary?: SummaryExecutive;
+  limitations?: string[];
   content: {
     user_transcription: string;
     ai_transcription: string;

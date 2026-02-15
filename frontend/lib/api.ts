@@ -205,3 +205,23 @@ export async function fetchSummaryChatReply(
   const data = (await res.json()) as { reply: string };
   return data.reply || "No reply.";
 }
+
+/** Create a PDF export for the current summary report and return static URL path. */
+export async function exportSummaryPdf(report: SummaryReport): Promise<string> {
+  const res = await fetch(`${BACKEND_URL}/api/session-summary/export-pdf`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(
+      (err as { detail?: string }).detail || "PDF export failed",
+    );
+  }
+
+  const data = (await res.json()) as { url: string };
+  if (!data.url) throw new Error("Export URL missing");
+  return `${BACKEND_URL}${data.url}`;
+}

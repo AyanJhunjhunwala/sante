@@ -2,11 +2,16 @@
 Summary router — generates a session report after any session ends.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from agents.session_summary import generate_ai_report, generate_chat_reply, generate_session_report
+from agents.session_summary import (
+    export_session_report_pdf,
+    generate_ai_report,
+    generate_chat_reply,
+    generate_session_report,
+)
 
 router = APIRouter(prefix="/api/session-summary", tags=["summary"])
 
@@ -27,6 +32,10 @@ class SessionSummaryChatRequest(BaseModel):
 
 
 class GenerateReportRequest(BaseModel):
+    report: dict
+
+
+class ExportReportRequest(BaseModel):
     report: dict
 
 
@@ -54,3 +63,12 @@ async def api_session_summary_chat(payload: SessionSummaryChatRequest) -> JSONRe
 async def api_generate_report(payload: GenerateReportRequest) -> JSONResponse:
     narrative = generate_ai_report(report=payload.report)
     return JSONResponse({"report": narrative})
+
+
+@router.post("/export-pdf")
+async def api_export_pdf(payload: ExportReportRequest) -> JSONResponse:
+    try:
+        path = export_session_report_pdf(report=payload.report)
+        return JSONResponse({"url": path})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF export failed: {exc}") from exc
