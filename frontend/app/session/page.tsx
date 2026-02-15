@@ -1,25 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useAnalysisWebSocket } from "@/hooks/useAnalysisWebSocket";
 import { useWaveform } from "@/hooks/useWaveform";
 import { analyzePhonemes, analyzeAcoustics, fetchSessionSummary } from "@/lib/api";
-import type { DysfluencyEntry } from "@/lib/types";
-import {
-  VALID_SEGMENTS,
-  SEGMENT_LABELS,
-  SESSION_MAX_MS,
-} from "@/lib/constants";
-import type { Segment } from "@/lib/types";
+import type { DysfluencyEntry, Segment } from "@/lib/types";
+import { SEGMENT_LABELS, SESSION_MAX_MS } from "@/lib/constants";
 import VoiceOrb from "@/components/session/VoiceOrb";
 import OrbControls from "@/components/session/OrbControls";
 import TranscriptScroll from "@/components/session/TranscriptScroll";
 import AnalysisSidebar from "@/components/sidebar/AnalysisSidebar";
 import ResultsModal from "@/components/sidebar/ResultsModal";
+
+const ACTIVE_SEGMENT: Segment = "conversation";
 
 function formatRemainingTime(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -29,27 +26,21 @@ function formatRemainingTime(ms: number): string {
 }
 
 export default function SessionPage() {
-  const params = useParams();
   const router = useRouter();
-  const segment = params.segment as string;
 
-  // Store
   const store = useSessionStore;
   const connectionStatus = useSessionStore((s) => s.connectionStatus);
   const isMuted = useSessionStore((s) => s.isMuted);
   const aiSpeaking = useSessionStore((s) => s.aiSpeaking);
   const remainingMs = useSessionStore((s) => s.remainingMs);
-  const sessionId = useSessionStore((s) => s.sessionId);
   const resultsStatus = useSessionStore((s) => s.resultsStatus);
 
-  // Hooks
   const webRTC = useWebRTC();
   const audioRecorder = useAudioRecorder();
   const ws = useAnalysisWebSocket();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const waveform = useWaveform(canvasRef);
 
-  // Timers
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
@@ -57,13 +48,10 @@ export default function SessionPage() {
 
   const timerProgress = remainingMs / SESSION_MAX_MS;
 
-  // ── End session ───────────────────────────────────────────────────────────
-
   const endSession = useCallback(async () => {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
 
-    // Stop timers
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -76,7 +64,6 @@ export default function SessionPage() {
     store.getState().endSession();
     waveform.stop();
 
-    // Snapshot conversation log before cleanup resets it
     const conversationLog = store.getState().conversationLog;
     const userTranscription = conversationLog
       .filter((t) => t.role === "user" && t.text)
@@ -90,17 +77,13 @@ export default function SessionPage() {
       conversationLog.length > 0 ? conversationLog[0].createdAt : Date.now();
     const durationSeconds = Math.max(0, (Date.now() - firstTurnAt) / 1000);
 
-    // Stop recording, grab full audio blob
     const audioBlob = await audioRecorder.stopRecording();
 
-    // Cleanup WebRTC + WS
     webRTC.cleanup();
     ws.disconnect();
 
-    // Show loading screen while we analyze
     store.getState().setResultsLoading();
     try {
-      // Run phoneme + acoustic analysis in parallel, then build the report
       let detectedPhonemes: string[] = [];
       let detectedDysDetect: DysfluencyEntry[] = [];
       let acousticFeatures: Record<string, number> | null = null;
@@ -126,7 +109,7 @@ export default function SessionPage() {
       }
 
       const report = await fetchSessionSummary({
-        segment,
+        segment: ACTIVE_SEGMENT,
         user_transcription: userTranscription,
         ai_transcription: aiTranscription,
         duration_seconds: durationSeconds,
@@ -138,47 +121,34 @@ export default function SessionPage() {
     } catch (err) {
       store
         .getState()
-        .setResultsError(
-          err instanceof Error ? err.message : "Analysis failed",
-        );
+        .setResultsError(err instanceof Error ? err.message : "Analysis failed");
     }
-  }, [audioRecorder, segment, store, webRTC, waveform, ws, router]);
-
-  // ── Mount: validate + init session ───────────────────────────────────────
+  }, [audioRecorder, store, webRTC, waveform, ws]);
 
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
 
-    // Validate segment
-    if (!VALID_SEGMENTS.includes(segment as Segment)) {
-      router.replace("/");
-      return;
-    }
+    store.getState().startSession(ACTIVE_SEGMENT);
 
-    const validSegment = segment as Segment;
-    store.getState().startSession(validSegment);
-
-    // Connect WebRTC
     const init = async () => {
-      const stream = await webRTC.connect(validSegment);
-      if (!stream) return;
+      const stream = await webRTC.connect(ACTIVE_SEGMENT);
+      if (!stream) {
+        router.replace("/");
+        return;
+      }
 
-      // Start waveform visualizer
       waveform.start(stream);
 
-      // Record audio for all segments — full blob used for post-session phoneme analysis
       audioRecorder.startRecording(stream, (chunk) => {
         ws.sendChunk(chunk);
       });
 
-      // Connect analysis WS
       const id = store.getState().sessionId;
       if (id) {
-        ws.connect(id, validSegment);
+        ws.connect(id, ACTIVE_SEGMENT);
       }
 
-      // Start session timer
       const deadline = Date.now() + SESSION_MAX_MS;
       store.getState().setSessionDeadline(deadline);
 
@@ -202,10 +172,7 @@ export default function SessionPage() {
         ws.disconnect();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Mute toggle ───────────────────────────────────────────────────────────
+  }, [audioRecorder, endSession, router, store, waveform, webRTC, ws]);
 
   const handleToggleMute = useCallback(() => {
     const {
@@ -222,8 +189,6 @@ export default function SessionPage() {
     }
   }, [store, webRTC]);
 
-  // ── Status text ───────────────────────────────────────────────────────────
-
   const getStatusText = () => {
     if (connectionStatus === "connecting") return "Connecting...";
     if (connectionStatus === "ending") return "Ending session...";
@@ -235,9 +200,6 @@ export default function SessionPage() {
 
   const isActive =
     connectionStatus === "active" || connectionStatus === "ending";
-  const segmentLabel = VALID_SEGMENTS.includes(segment as Segment)
-    ? SEGMENT_LABELS[segment as Segment]
-    : "";
 
   return (
     <div
@@ -248,7 +210,6 @@ export default function SessionPage() {
         background: "var(--bg)",
       }}
     >
-      {/* Left column */}
       <div
         style={{
           display: "flex",
@@ -259,7 +220,6 @@ export default function SessionPage() {
           minWidth: 0,
         }}
       >
-        {/* Session header */}
         <div
           style={{
             display: "flex",
@@ -295,11 +255,10 @@ export default function SessionPage() {
               letterSpacing: "0.2px",
             }}
           >
-            {segmentLabel}
+            {SEGMENT_LABELS[ACTIVE_SEGMENT]}
           </span>
         </div>
 
-        {/* Session hero */}
         <div
           style={{
             display: "flex",
@@ -316,7 +275,6 @@ export default function SessionPage() {
             countdown={formatRemainingTime(remainingMs)}
           />
 
-          {/* Status text */}
           <p
             style={{
               fontSize: "14px",
@@ -331,7 +289,6 @@ export default function SessionPage() {
             {getStatusText()}
           </p>
 
-          {/* Controls */}
           {isActive && (
             <OrbControls
               isMuted={isMuted}
@@ -342,7 +299,6 @@ export default function SessionPage() {
           )}
         </div>
 
-        {/* Transcript */}
         <div
           style={{
             flex: 1,
@@ -356,7 +312,6 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* Right sidebar — desktop only */}
       <div
         className="hidden lg:flex"
         style={{
@@ -368,7 +323,6 @@ export default function SessionPage() {
         <AnalysisSidebar canvasRef={canvasRef} />
       </div>
 
-      {/* Results modal */}
       {resultsStatus !== "idle" && <ResultsModal />}
     </div>
   );

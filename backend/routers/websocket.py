@@ -25,7 +25,7 @@ router = APIRouter(tags=["websocket"])
 async def analysis_ws(
     websocket: WebSocket,
     session_id: str,
-    segment: str = Query(default="stress"),
+    segment: str = Query(default="conversation"),
 ) -> None:
     """
     Real-time analysis WebSocket.

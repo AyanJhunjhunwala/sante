@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useSessionStore } from "@/store/sessionStore";
+import { extractAssistantSections } from "@/lib/transcriptSections";
 
 export default function TranscriptScroll() {
   const conversationLog = useSessionStore((s) => s.conversationLog);
@@ -68,62 +69,81 @@ export default function TranscriptScroll() {
             The conversation will appear here...
           </div>
         ) : (
-          conversationLog.map((turn) => (
-            <div
-              key={turn.id}
-              style={{
-                display: "flex",
-                gap: "12px",
-                alignItems: "flex-start",
-                fontSize: "13px",
-                lineHeight: 1.7,
-                padding: "8px 12px",
-                borderRadius: "10px",
-                background: "var(--bg-white)",
-                border: "1px solid var(--border-light)",
-              }}
-            >
-              {/* Role label */}
-              <span
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                  paddingTop: "3px",
-                  minWidth: "44px",
-                  flexShrink: 0,
-                  color: turn.role === "user" ? "var(--blue)" : "var(--indigo)",
-                }}
-              >
-                {turn.role === "user" ? "You" : "Santé"}
-              </span>
+          conversationLog.map((turn) => {
+            const sections =
+              turn.role === "assistant" ? extractAssistantSections(turn.text) : null;
 
-              {/* Text */}
-              <span
+            return (
+              <div
+                key={turn.id}
                 style={{
-                  color: "var(--text-secondary)",
-                  opacity: turn.status === "draft" ? 0.7 : 1,
-                  transition: "opacity 0.2s ease",
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "flex-start",
+                  fontSize: "13px",
+                  lineHeight: 1.7,
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  background: "var(--bg-white)",
+                  border: "1px solid var(--border-light)",
                 }}
               >
-                {turn.text}
-                {turn.status === "draft" && (
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "2px",
-                      height: "13px",
-                      background: "var(--indigo)",
-                      marginLeft: "2px",
-                      verticalAlign: "middle",
-                      animation: "blink 1s ease-in-out infinite",
-                    }}
-                  />
-                )}
-              </span>
-            </div>
-          ))
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                    paddingTop: "3px",
+                    minWidth: "44px",
+                    flexShrink: 0,
+                    color: turn.role === "user" ? "var(--blue)" : "var(--indigo)",
+                  }}
+                >
+                  {turn.role === "user" ? "You" : "Santé"}
+                </span>
+
+                <span
+                  style={{
+                    color: "var(--text-secondary)",
+                    opacity: turn.status === "draft" ? 0.7 : 1,
+                    transition: "opacity 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
+                >
+                  {sections ? (
+                    <>
+                      <span>
+                        <strong>Conversation:</strong> {sections.conversation}
+                      </span>
+                      {sections.readAloud && (
+                        <span>
+                          <strong>Read Aloud:</strong> {sections.readAloud}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    turn.text
+                  )}
+                  {turn.status === "draft" && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: "2px",
+                        height: "13px",
+                        background: "var(--indigo)",
+                        marginLeft: "2px",
+                        verticalAlign: "middle",
+                        animation: "blink 1s ease-in-out infinite",
+                      }}
+                    />
+                  )}
+                </span>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

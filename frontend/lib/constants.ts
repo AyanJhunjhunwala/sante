@@ -1,12 +1,10 @@
 import type { Segment } from "./types";
 
 export const SEGMENT_LABELS: Record<Segment, string> = {
-  speech: "Speech Patterns",
-  health: "General Health",
-  stress: "Stress & Wellness",
+  conversation: "Conversation Session",
 };
 
-export const VALID_SEGMENTS: Segment[] = ["speech", "health", "stress"];
+export const VALID_SEGMENTS: Segment[] = ["conversation"];
 
 export const SESSION_MAX_MS = 60_000; // 1 minute
 

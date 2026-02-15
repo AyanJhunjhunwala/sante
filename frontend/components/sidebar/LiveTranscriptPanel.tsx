@@ -1,6 +1,7 @@
 "use client";
 
 import { useSessionStore } from "@/store/sessionStore";
+import { extractAssistantSections } from "@/lib/transcriptSections";
 
 export default function LiveTranscriptPanel() {
   const conversationLog = useSessionStore((s) => s.conversationLog);
@@ -42,43 +43,53 @@ export default function LiveTranscriptPanel() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {recentTurns.map((turn) => (
-            <div
-              key={turn.id}
-              style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "flex-start",
-              }}
-            >
-              <span
+          {recentTurns.map((turn) => {
+            const sections =
+              turn.role === "assistant" ? extractAssistantSections(turn.text) : null;
+            const displayText = sections
+              ? sections.readAloud
+                ? `Conversation: ${sections.conversation} | Read Aloud: ${sections.readAloud}`
+                : `Conversation: ${sections.conversation}`
+              : turn.text;
+
+            return (
+              <div
+                key={turn.id}
                 style={{
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.8px",
-                  color: turn.role === "user" ? "var(--blue)" : "var(--indigo)",
-                  paddingTop: "2px",
-                  minWidth: "38px",
-                  flexShrink: 0,
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "flex-start",
                 }}
               >
-                {turn.role === "user" ? "You" : "AI"}
-              </span>
-              <span
-                style={{
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  lineHeight: 1.5,
-                  opacity: turn.status === "draft" ? 0.7 : 1,
-                }}
-              >
-                {turn.text.length > 120
-                  ? turn.text.slice(0, 120) + "..."
-                  : turn.text}
-              </span>
-            </div>
-          ))}
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
+                    color: turn.role === "user" ? "var(--blue)" : "var(--indigo)",
+                    paddingTop: "2px",
+                    minWidth: "38px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {turn.role === "user" ? "You" : "AI"}
+                </span>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-secondary)",
+                    lineHeight: 1.5,
+                    opacity: turn.status === "draft" ? 0.7 : 1,
+                  }}
+                >
+                  {displayText.length > 120
+                    ? displayText.slice(0, 120) + "..."
+                    : displayText}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

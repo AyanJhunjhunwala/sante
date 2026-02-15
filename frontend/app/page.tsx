@@ -1,55 +1,6 @@
 import ScribbleWave from "@/components/landing/ScribbleWave";
-import SegmentCard from "@/components/landing/SegmentCard";
 import ImpactCard from "@/components/landing/ImpactCard";
-
-const SpeechIcon = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    width="24"
-    height="24"
-  >
-    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-    <line x1="12" y1="19" x2="12" y2="23" />
-    <line x1="8" y1="23" x2="16" y2="23" />
-  </svg>
-);
-
-const HealthIcon = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    width="24"
-    height="24"
-  >
-    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-  </svg>
-);
-
-const StressIcon = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    width="24"
-    height="24"
-  >
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-  </svg>
-);
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -119,7 +70,7 @@ export default function HomePage() {
           </h1>
         </section>
 
-        {/* Segment cards */}
+        {/* Session start */}
         <section style={{ marginBottom: "28px" }}>
           <div
             style={{
@@ -131,36 +82,41 @@ export default function HomePage() {
               marginBottom: "14px",
             }}
           >
-            Start a Voice Session
+            Start Session
           </div>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: "18px",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: "14px 0 8px",
             }}
           >
-            <SegmentCard
-              segment="speech"
-              sessionNumber={1}
-              title="Speech Patterns"
-              description="Checks articulation, pacing, and speech stability from guided prompts."
-              icon={SpeechIcon}
-            />
-            <SegmentCard
-              segment="health"
-              sessionNumber={2}
-              title="General Health"
-              description="Assesses breath support and vocal steadiness linked to overall health."
-              icon={HealthIcon}
-            />
-            <SegmentCard
-              segment="stress"
-              sessionNumber={3}
-              title="Stress & Wellness"
-              description="Detects stress-related shifts in tone, rhythm, and speaking pattern."
-              icon={StressIcon}
-            />
+            <Link
+              href="/session"
+              style={{
+                width: "220px",
+                height: "220px",
+                borderRadius: "999px",
+                background: "var(--blue)",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "column",
+                textDecoration: "none",
+                boxShadow: "0 18px 40px rgba(59,130,246,0.28)",
+                border: "1px solid rgba(255,255,255,0.32)",
+                transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                fontWeight: 700,
+                letterSpacing: "0.2px",
+              }}
+            >
+              <span style={{ fontSize: "24px", lineHeight: 1 }}>Start</span>
+              <span style={{ fontSize: "14px", opacity: 0.9, marginTop: "4px" }}>
+                Conversation
+              </span>
+            </Link>
           </div>
         </section>
 

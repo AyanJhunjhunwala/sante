@@ -1,8 +1,10 @@
 import type { AnalysisResults, DysfluencyEntry, SummaryReport } from "./types";
 import { BACKEND_URL } from "./constants";
 
-/** Fetch an ephemeral OpenAI Realtime token for the given segment. */
-export async function fetchEphemeralToken(segment: string): Promise<string> {
+/** Fetch an ephemeral OpenAI Realtime token for the conversation workflow. */
+export async function fetchEphemeralToken(
+  segment: string = "conversation",
+): Promise<string> {
   const res = await fetch(`/token/${segment}`);
   if (!res.ok) {
     const text = await res.text();

@@ -1,4 +1,4 @@
-export type Segment = "speech" | "health" | "stress";
+export type Segment = "conversation";
 
 export type TurnRole = "user" | "assistant";
 
