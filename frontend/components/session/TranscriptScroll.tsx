@@ -130,8 +130,18 @@ export default function TranscriptScroll() {
                     lineHeight: 1.7,
                     padding: "8px 12px",
                     borderRadius: "10px",
-                    background: "var(--bg-white)",
-                    border: "1px solid var(--border-light)",
+                    background:
+                      turn.role === "user"
+                        ? "var(--blue-soft)"
+                        : "var(--bg-white)",
+                    border:
+                      turn.role === "user"
+                        ? "1px solid rgba(59,130,246,0.22)"
+                        : "1px solid var(--border-light)",
+                    boxShadow:
+                      turn.role === "user"
+                        ? "0 1px 3px rgba(59,130,246,0.08)"
+                        : "none",
                   }}
                 >
                   <span
@@ -154,7 +164,10 @@ export default function TranscriptScroll() {
 
                   <span
                     style={{
-                      color: "var(--text-secondary)",
+                      color:
+                        turn.role === "user"
+                          ? "var(--text)"
+                          : "var(--text-secondary)",
                       opacity: turn.status === "draft" ? 0.7 : 1,
                       transition: "opacity 0.2s ease",
                     }}

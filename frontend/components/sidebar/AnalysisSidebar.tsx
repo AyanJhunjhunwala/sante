@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 import { useSessionStore } from "@/store/sessionStore";
 import { SEGMENT_LABELS } from "@/lib/constants";
 import WaveformPanel from "./WaveformPanel";
+import NoiseThresholdPanel from "./NoiseThresholdPanel";
 import F0PitchPanel from "./F0PitchPanel";
 import WPMPanel from "./WPMPanel";
 import LiveTranscriptPanel from "./LiveTranscriptPanel";
@@ -67,6 +68,7 @@ export default function AnalysisSidebar({ canvasRef }: AnalysisSidebarProps) {
       </div>
 
       <WaveformPanel canvasRef={canvasRef} />
+      <NoiseThresholdPanel />
       <F0PitchPanel />
       <WPMPanel />
       <LiveTranscriptPanel />

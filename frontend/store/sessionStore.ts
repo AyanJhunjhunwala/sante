@@ -13,6 +13,7 @@ import type {
   Turn,
   WPMPoint,
 } from "@/lib/types";
+import { VAD_THRESHOLD_DEFAULT } from "@/lib/constants";
 
 // ---------------------------------------------------------------------------
 // State shape
@@ -40,6 +41,9 @@ export interface SessionState {
   // Session timer (safety fallback)
   sessionDeadline: number; // epoch ms, 0 = not started
   remainingMs: number;
+
+  // Audio turn detection sensitivity
+  vadThreshold: number;
 
   // Real-time analysis (from WebSocket)
   waveformData: number[];
@@ -73,6 +77,7 @@ export interface SessionActions {
   // WebRTC
   setMuted: (muted: boolean) => void;
   setAiSpeaking: (speaking: boolean) => void;
+  setVadThreshold: (threshold: number) => void;
 
   // Transcript
   appendDraftDelta: (delta: string) => void;
@@ -124,6 +129,7 @@ const initialState: SessionState = {
   phaseStartTurnId: 0,
   sessionDeadline: 0,
   remainingMs: 60_000,
+  vadThreshold: VAD_THRESHOLD_DEFAULT,
   waveformData: [],
   stressScore: null,
   speechMetrics: null,
@@ -168,6 +174,8 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           aiSpeaking: speaking,
           userMutedBeforeAI: speaking ? s.isMuted : s.userMutedBeforeAI,
         })),
+
+      setVadThreshold: (vadThreshold) => set({ vadThreshold }),
 
       appendDraftDelta: (delta) =>
         set((s) => {

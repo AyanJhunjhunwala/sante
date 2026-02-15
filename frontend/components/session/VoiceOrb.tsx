@@ -3,6 +3,7 @@
 interface VoiceOrbProps {
   aiSpeaking: boolean;
   isActive: boolean;
+  isMuted: boolean;
   phase: string;
   currentPrompt: number;
   totalPrompts: number;
@@ -11,6 +12,7 @@ interface VoiceOrbProps {
 export default function VoiceOrb({
   aiSpeaking,
   isActive,
+  isMuted,
   phase,
   currentPrompt,
   totalPrompts,
@@ -18,15 +20,15 @@ export default function VoiceOrb({
   const progressDeg = totalPrompts > 0 ? (currentPrompt / totalPrompts) * 360 : 0;
 
   const ringBorderColor = aiSpeaking
-    ? "rgba(99,102,241,0.15)"
+    ? "rgba(148,163,184,0.35)"
     : "var(--blue-ring)";
 
   const orbBackground = aiSpeaking
-    ? "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)"
+    ? "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)"
     : "linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)";
 
   const orbShadow = aiSpeaking
-    ? "0 8px 32px rgba(99,102,241,0.3)"
+    ? "0 8px 24px rgba(100,116,139,0.28)"
     : "var(--shadow-blue)";
 
   return (
@@ -42,8 +44,8 @@ export default function VoiceOrb({
       <div
         style={{
           position: "relative",
-          width: "220px",
-          height: "220px",
+          width: "188px",
+          height: "188px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -54,8 +56,8 @@ export default function VoiceOrb({
           <div
             style={{
               position: "absolute",
-              width: "188px",
-              height: "188px",
+              width: "160px",
+              height: "160px",
               borderRadius: "50%",
               background: `conic-gradient(var(--timer-color) ${progressDeg}deg, rgba(148,163,184,0.15) 0)`,
               WebkitMask:
@@ -71,8 +73,8 @@ export default function VoiceOrb({
         <div
           style={{
             position: "absolute",
-            width: "240px",
-            height: "240px",
+            width: "208px",
+            height: "208px",
             borderRadius: "50%",
             border: `1.5px solid ${ringBorderColor}`,
             opacity: isActive ? 1 : 0,
@@ -87,8 +89,8 @@ export default function VoiceOrb({
         <div
           style={{
             position: "absolute",
-            width: "300px",
-            height: "300px",
+            width: "252px",
+            height: "252px",
             borderRadius: "50%",
             border: `1.5px solid ${ringBorderColor}`,
             opacity: isActive ? 1 : 0,
@@ -103,8 +105,8 @@ export default function VoiceOrb({
         <div
           style={{
             position: "absolute",
-            width: "370px",
-            height: "370px",
+            width: "300px",
+            height: "300px",
             borderRadius: "50%",
             border: `1.5px solid ${ringBorderColor}`,
             opacity: isActive ? 1 : 0,
@@ -118,8 +120,8 @@ export default function VoiceOrb({
         {/* Orb */}
         <div
           style={{
-            width: "160px",
-            height: "160px",
+            width: "132px",
+            height: "132px",
             borderRadius: "50%",
             background: orbBackground,
             boxShadow: orbShadow,
@@ -135,7 +137,7 @@ export default function VoiceOrb({
           <span
             style={{
               fontSize: "22px",
-              letterSpacing: "3px",
+              letterSpacing: "2px",
               textTransform: "uppercase",
               color: "#ffffff",
               fontWeight: 500,
@@ -146,7 +148,7 @@ export default function VoiceOrb({
           {isActive && (
             <span
               style={{
-                fontSize: "14px",
+                fontSize: "13px",
                 fontWeight: 700,
                 color: "rgba(255,255,255,0.85)",
                 fontVariantNumeric: "tabular-nums",
