@@ -12,7 +12,8 @@ import base64
 
 import httpx
 
-RUNPOD_BASE = "https://api.runpod.ai/v2/bfl4ave2lkfph1"
+RUNPOD_STRESS_ENDPOINT_ID = os.getenv("RUNPOD_STRESS_ENDPOINT_ID", "bfl4ave2lkfph1")
+RUNPOD_BASE = f"https://api.runpod.ai/v2/{RUNPOD_STRESS_ENDPOINT_ID}"
 POLL_INTERVAL = 2          # seconds between status checks
 MAX_POLL_TIME = 120        # per-attempt timeout
 MAX_RETRIES = 3            # retry on cold-start errors
@@ -39,7 +40,7 @@ async def analyze_stress(audio_bytes: bytes) -> dict:
     Send audio bytes to the RunPod stress detector.
     Retries automatically if the worker is still cold-starting.
     """
-    api_key = os.getenv("RUNPOD_API_KEY", "")
+    api_key = os.getenv("RUNPOD_API_KEY", "").strip().strip('"').strip("'")
 
     if not api_key or api_key.startswith("your_"):
         return {"error": "RUNPOD_API_KEY not configured in .env"}

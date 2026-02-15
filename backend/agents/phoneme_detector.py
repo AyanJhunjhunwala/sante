@@ -16,7 +16,8 @@ import httpx
 
 from services.audio_convert import to_wav_bytes
 
-RUNPOD_BASE = "https://api.runpod.ai/v2/eib51lbk8ca3wl"
+RUNPOD_PHONEME_ENDPOINT_ID = os.getenv("RUNPOD_PHONEME_ENDPOINT_ID", "eib51lbk8ca3wl")
+RUNPOD_BASE = f"https://api.runpod.ai/v2/{RUNPOD_PHONEME_ENDPOINT_ID}"
 POLL_INTERVAL = 2  # seconds between status checks
 MAX_POLL_TIME = 300  # 5 min — cold starts on 23GB image can take 2-3 min
 MAX_RETRIES = 2  # fewer retries — real-time context
@@ -42,7 +43,7 @@ async def analyze_phonemes(audio_bytes: bytes, ref_text: str = "") -> dict:
     Returns dict with ref_phonemes, decode_phonemes, dys_detect on success,
     or {"error": "..."} on failure.
     """
-    api_key = os.getenv("RUNPOD_API_KEY", "")
+    api_key = os.getenv("RUNPOD_API_KEY", "").strip().strip('"').strip("'")
 
     if not api_key or api_key.startswith("your_"):
         return {"error": "RUNPOD_API_KEY not configured in .env"}
@@ -91,9 +92,22 @@ async def _submit_and_poll(headers: dict, payload: dict) -> dict:
         )
 
         if resp.status_code != 200:
-            body = resp.text[:500]
+            body = (resp.text or "").strip()[:500]
             print(f"[phoneme_detector] Submit failed {resp.status_code}: {body}")
-            return {"error": f"RunPod submit error ({resp.status_code}): {body}"}
+            if resp.status_code == 401:
+                return {
+                    "error": (
+                        "RunPod submit error (401): unauthorized for endpoint "
+                        f"{RUNPOD_PHONEME_ENDPOINT_ID}. Check RUNPOD_API_KEY and "
+                        "RUNPOD_PHONEME_ENDPOINT_ID."
+                    )
+                }
+            return {
+                "error": (
+                    f"RunPod submit error ({resp.status_code}) on endpoint "
+                    f"{RUNPOD_PHONEME_ENDPOINT_ID}: {body}"
+                )
+            }
 
         job = resp.json()
         job_id = job.get("id")
