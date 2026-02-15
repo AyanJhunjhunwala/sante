@@ -115,6 +115,9 @@ async def get_ephemeral_token(segment: str):
             detail="OpenAI API key not configured. Set OPENAI_API_KEY in .env",
         )
 
+    if segment == "read-aloud-prompt":
+        return JSONResponse({"instructions": PROMPT_READ_ALOUD_PHASE})
+
     instructions = SEGMENTS.get(segment)
     if not instructions:
         raise HTTPException(status_code=400, detail=f"Unknown segment: {segment}")
@@ -204,6 +207,11 @@ async def get_ephemeral_token(segment: str):
         ) from exc
 
     return JSONResponse(payload)
+
+
+@app.get("/token/read-aloud-prompt")
+async def get_read_aloud_prompt():
+    return JSONResponse({"instructions": PROMPT_READ_ALOUD_PHASE})
 
 
 # ---------------------------------------------------------------------------

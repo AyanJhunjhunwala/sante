@@ -5,7 +5,7 @@ import { BACKEND_URL } from "./constants";
 export async function fetchEphemeralToken(
   segment: string = "conversation",
 ): Promise<string> {
-  const res = await fetch(`/token/${segment}`);
+  const res = await fetch(`${BACKEND_URL}/token/${segment}`);
   if (!res.ok) {
     const text = await res.text();
     let detail = text.trim();
@@ -146,9 +146,25 @@ export async function fetchSessionSummary(payload: {
 
 /** Fetch Read Aloud phase instructions from backend. */
 export async function fetchReadAloudPrompt(): Promise<string> {
-  const res = await fetch(`/token/read-aloud-prompt`);
+  const res = await fetch(`${BACKEND_URL}/token/read-aloud-prompt`);
   if (!res.ok) {
-    throw new Error(`Failed to fetch Read Aloud prompt (${res.status})`);
+    const text = await res.text().catch(() => "");
+    let detail = text.trim();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown };
+        if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+          detail = parsed.detail;
+        } else if (typeof parsed.message === "string" && parsed.message.trim()) {
+          detail = parsed.message;
+        }
+      } catch {
+        // Keep raw text fallback
+      }
+    }
+    throw new Error(
+      detail || `Failed to fetch Read Aloud prompt (${res.status})`,
+    );
   }
   const data = await res.json();
   return data.instructions;

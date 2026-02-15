@@ -15,6 +15,10 @@ export function useAnalysisWebSocket() {
 
   const connect = useCallback(
     (sessionId: string, segment: string) => {
+      if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+        wsRef.current.close();
+      }
+
       const url = `${WS_BASE}/ws/analysis/${sessionId}?segment=${segment}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
@@ -53,8 +57,24 @@ export function useAnalysisWebSocket() {
         }
       };
 
-      ws.onerror = (e) => console.error("[Santé WS] error:", e);
-      ws.onclose = () => console.log("[Santé WS] closed");
+      ws.onerror = () => {
+        console.warn("[Santé WS] connection error (see close event for details)", {
+          url,
+        });
+      };
+      ws.onclose = (e) => {
+        const detail = {
+          code: e.code,
+          reason: e.reason || "(none)",
+          wasClean: e.wasClean,
+          url,
+        };
+        if (e.wasClean) {
+          console.log("[Santé WS] closed", detail);
+        } else {
+          console.warn("[Santé WS] closed unexpectedly", detail);
+        }
+      };
     },
     [store],
   );
