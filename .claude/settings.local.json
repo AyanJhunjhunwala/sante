@@ -3,7 +3,8 @@
     "allow": [
       "Bash(docker images:*)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(curl:*)"
     ]
   }
 }
