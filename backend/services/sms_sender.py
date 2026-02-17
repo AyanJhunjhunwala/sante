@@ -82,3 +82,60 @@ def send_sms_report(
         logger.warning(f"[mms] MMS failed to {to_phone} (non-fatal): {mms_exc}")
 
     return sms_result
+
+
+def send_clinician_alert(
+    *,
+    to_phone: str,
+    report_url: str,
+    report_id: str,
+    signal_score: float,
+    urgency: str,
+    safety_category: str = "",
+    safety_confidence: float = 0.0,
+    source: str = "",
+    call_sid: str = "",
+) -> dict[str, Any]:
+    """
+    Send a clinician alert SMS when a patient's report meets forwarding criteria.
+
+    Returns: {"sid": str | None, "status": str, "error": str | None}
+    """
+    from twilio.rest import Client  # lazy import
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    from_number = os.getenv("TWILIO_PHONE_NUMBER", "")
+
+    if not all([account_sid, auth_token, from_number]):
+        logger.error("[clinician_alert] Twilio credentials not configured")
+        return {
+            "sid": None,
+            "status": "error",
+            "error": "Twilio credentials not configured",
+        }
+
+    if urgency == "urgent" and safety_category:
+        body = (
+            f"[URGENT] Sante Safety Alert\n"
+            f"Category: {safety_category} (confidence: {safety_confidence:.0%})\n"
+            f"Report: {report_url}"
+        )
+    else:
+        body = (
+            f"Sante Clinician Alert\n"
+            f"Signal score: {signal_score:.1f} | Urgency: {urgency}\n"
+            f"Report: {report_url}"
+        )
+
+    client = Client(account_sid, auth_token)
+    try:
+        message = client.messages.create(body=body, from_=from_number, to=to_phone)
+        logger.info(
+            f"[clinician_alert] Sent to {to_phone}: sid={message.sid}, status={message.status} "
+            f"report_id={report_id} source={source} call_sid={call_sid}"
+        )
+        return {"sid": message.sid, "status": message.status, "error": None}
+    except Exception as exc:
+        logger.error(f"[clinician_alert] Failed to send to {to_phone}: {exc}")
+        return {"sid": None, "status": "error", "error": str(exc)}
